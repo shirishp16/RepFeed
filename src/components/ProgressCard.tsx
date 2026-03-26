@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { mockUserStats, motivationalQuotes } from '@/data/mockData';
 
@@ -10,10 +10,11 @@ interface ProgressCardProps {
 
 export default function ProgressCard({ xp }: ProgressCardProps) {
   const stats = mockUserStats;
-  const quote = useMemo(
-    () => motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)],
-    [],
-  );
+  const [quote, setQuote] = useState(motivationalQuotes[0]);
+
+  useEffect(() => {
+    setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
+  }, []);
 
   const rom = stats.rangeOfMotion;
   const romData = [
