@@ -8,7 +8,7 @@ import {
   type ExerciseCard,
 } from '@/data/mockData';
 
-interface PreferenceVector {
+export interface PreferenceVector {
   upperBody: number;
   lowerBody: number;
   core: number;

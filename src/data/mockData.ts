@@ -1,3 +1,5 @@
+import type { ExerciseType } from '@/lib/poseDetection';
+
 export interface ExerciseCard {
   id: string;
   type: 'exercise';
@@ -12,6 +14,7 @@ export interface ExerciseCard {
   muscleGroups: string[];
   safetyNote?: string;
   canTryIt: boolean;
+  exerciseType?: ExerciseType;
 }
 
 export interface KnowledgeCard {
@@ -42,7 +45,7 @@ export const exercises: ExerciseCard[] = [
     reps: 20,
     xpReward: 15,
     muscleGroups: ['Quadriceps'],
-    canTryIt: true,
+    canTryIt: false,
   },
   {
     id: 'ex-2',
@@ -55,7 +58,7 @@ export const exercises: ExerciseCard[] = [
     reps: 15,
     xpReward: 20,
     muscleGroups: ['Quadriceps', 'Hip Flexors'],
-    canTryIt: true,
+    canTryIt: false,
   },
   {
     id: 'ex-3',
@@ -68,7 +71,7 @@ export const exercises: ExerciseCard[] = [
     reps: 30,
     xpReward: 10,
     muscleGroups: ['Calves', 'Tibialis Anterior'],
-    canTryIt: true,
+    canTryIt: false,
   },
   {
     id: 'ex-4',
@@ -81,7 +84,7 @@ export const exercises: ExerciseCard[] = [
     reps: 15,
     xpReward: 20,
     muscleGroups: ['Quadriceps', 'Hamstrings'],
-    canTryIt: true,
+    canTryIt: false,
   },
   {
     id: 'ex-5',
@@ -95,6 +98,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 20,
     muscleGroups: ['Gastrocnemius', 'Soleus'],
     canTryIt: true,
+    exerciseType: 'calf_raise',
   },
 
   // Medium (4-6)
@@ -110,6 +114,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 30,
     muscleGroups: ['Quadriceps', 'Glutes', 'Core'],
     canTryIt: true,
+    exerciseType: 'wall_sit',
   },
   {
     id: 'ex-7',
@@ -124,6 +129,7 @@ export const exercises: ExerciseCard[] = [
     muscleGroups: ['Quadriceps', 'Glutes', 'Hamstrings'],
     safetyNote: 'Do not bend past 90 degrees. Stop if you feel a sharp pain.',
     canTryIt: true,
+    exerciseType: 'squat',
   },
   {
     id: 'ex-8',
@@ -151,6 +157,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 25,
     muscleGroups: ['Hamstrings', 'Glutes'],
     canTryIt: true,
+    exerciseType: 'hamstring_curl',
   },
   {
     id: 'ex-10',
@@ -164,6 +171,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 30,
     muscleGroups: ['Stabilizers', 'Core', 'Ankle Complex'],
     canTryIt: true,
+    exerciseType: 'single_leg_balance',
   },
 
   // Hard (7-10)
@@ -220,6 +228,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 45,
     muscleGroups: ['Hamstrings', 'Glutes', 'Core', 'Stabilizers'],
     canTryIt: true,
+    exerciseType: 'single_leg_rdl',
   },
   {
     id: 'ex-15',
@@ -234,6 +243,7 @@ export const exercises: ExerciseCard[] = [
     muscleGroups: ['Quadriceps', 'Glutes', 'Hamstrings', 'Core', 'Calves'],
     safetyNote: 'Only when full ROM is restored and PT has cleared deep flexion under load.',
     canTryIt: true,
+    exerciseType: 'squat',
   },
 ];
 
