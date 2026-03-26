@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --bg: #060606;
+  --bg-card: #0e0e0e;
+  --bg-elevated: #171717;
+  --accent: #F97316;
+  --accent-soft: rgba(249, 115, 22, 0.12);
+  --accent-glow: rgba(249, 115, 22, 0.35);
+  --active: #2DD4BF;
+  --active-soft: rgba(45, 212, 191, 0.12);
+  --active-glow: rgba(45, 212, 191, 0.3);
+  --success: #22C55E;
+  --warning: #EAB308;
+  --danger: #EF4444;
+  --text-primary: #F1F1F1;
+  --text-secondary: #7A7A7A;
+  --text-muted: #3A3A3A;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-accent: rgba(249, 115, 22, 0.2);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-card: var(--bg-card);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-glow: var(--accent-glow);
+  --color-active: var(--active);
+  --color-active-soft: var(--active-soft);
+  --color-active-glow: var(--active-glow);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-border-accent: var(--border-accent);
+  --font-outfit: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Pulse animation for TRY IT button */
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--active); box-shadow: 0 0 0 0 var(--active-glow); }
+  50% { border-color: var(--active); box-shadow: 0 0 12px 4px var(--active-glow); }
+}
+
+.pulse-border {
+  animation: pulse-border 3s infinite;
+}
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent 0%, var(--accent-glow) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Neural net rotate */
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+/* Typewriter effect */
+@keyframes typewriter {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+.typewriter {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typewriter 2s steps(40) forwards;
+}
+
+/* Body scan animation */
+@keyframes body-scan-dot {
+  0% { opacity: 0; transform: scale(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.body-scan-dot {
+  animation: body-scan-dot 0.4s ease-out forwards;
+  opacity: 0;
+}
