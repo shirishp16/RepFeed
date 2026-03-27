@@ -81,9 +81,19 @@ export default function RehabProfile({
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
-            className="w-[280px] h-[360px] bg-bg-card border border-accent rounded-2xl p-4 mb-2 overflow-hidden"
+            className="w-[280px] h-[360px] rounded-2xl p-4 mb-2 overflow-hidden"
+            style={{
+              background: 'rgba(14, 14, 14, 0.85)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(45, 212, 191, 0.2)',
+              boxShadow: '0 0 30px rgba(45,212,191,0.08), 0 8px 32px rgba(0,0,0,0.4)',
+            }}
           >
-            <h4 className="font-mono text-xs font-bold text-accent tracking-widest mb-3">
+            <h4
+              className="font-mono text-xs font-bold text-accent tracking-widest mb-3"
+              style={{ textShadow: '0 0 10px rgba(45,212,191,0.3)' }}
+            >
               REHAB INTELLIGENCE
             </h4>
 
@@ -96,12 +106,10 @@ export default function RehabProfile({
                     key={scale}
                     points={getRadarPoints(
                       Array(5).fill(scale),
-                      cx,
-                      cy,
-                      r,
+                      cx, cy, r,
                     )}
                     fill="none"
-                    stroke="var(--border)"
+                    stroke="rgba(255,255,255,0.06)"
                     strokeWidth="1"
                   />
                 ))}
@@ -111,23 +119,22 @@ export default function RehabProfile({
                   return (
                     <line
                       key={i}
-                      x1={cx}
-                      y1={cy}
-                      x2={pt.x}
-                      y2={pt.y}
-                      stroke="var(--border)"
+                      x1={cx} y1={cy}
+                      x2={pt.x} y2={pt.y}
+                      stroke="rgba(255,255,255,0.06)"
                       strokeWidth="1"
                     />
                   );
                 })}
-                {/* Data polygon */}
+                {/* Data polygon — teal glow */}
                 <motion.polygon
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   points={getRadarPoints(values, cx, cy, r)}
-                  fill="var(--accent-soft)"
-                  stroke="var(--accent)"
+                  fill="rgba(45, 212, 191, 0.1)"
+                  stroke="#2DD4BF"
                   strokeWidth="2"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(45,212,191,0.3))' }}
                 />
                 {/* Data dots */}
                 {values.map((v, i) => {
@@ -135,10 +142,9 @@ export default function RehabProfile({
                   return (
                     <circle
                       key={i}
-                      cx={pt.x}
-                      cy={pt.y}
-                      r={3}
-                      fill="var(--accent)"
+                      cx={pt.x} cy={pt.y} r={3}
+                      fill="#2DD4BF"
+                      style={{ filter: 'drop-shadow(0 0 4px rgba(45,212,191,0.5))' }}
                     />
                   );
                 })}
@@ -148,8 +154,7 @@ export default function RehabProfile({
                   return (
                     <text
                       key={label}
-                      x={pt.x}
-                      y={pt.y}
+                      x={pt.x} y={pt.y}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       className="fill-text-muted text-[8px] font-mono"
@@ -168,6 +173,7 @@ export default function RehabProfile({
                   animate={{ rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
                   className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full"
+                  style={{ filter: 'drop-shadow(0 0 3px rgba(45,212,191,0.5))' }}
                 />
                 <span className="font-mono text-[10px] text-text-muted">
                   Feed Adapting...
@@ -180,7 +186,12 @@ export default function RehabProfile({
               {insights.map((insight) => (
                 <span
                   key={insight}
-                  className="px-2 py-0.5 rounded-full bg-bg-elevated text-text-muted font-mono text-[9px]"
+                  className="px-2 py-0.5 rounded-full font-mono text-[9px]"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'rgba(255,255,255,0.4)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                  }}
                 >
                   {insight}
                 </span>
@@ -190,13 +201,17 @@ export default function RehabProfile({
         )}
       </AnimatePresence>
 
-      {/* Toggle button */}
+      {/* Toggle button — gradient with glow */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={() => setExpanded((prev) => !prev)}
-        className="w-12 h-12 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent-glow"
+        className="w-12 h-12 rounded-full flex items-center justify-center"
+        style={{
+          backgroundImage: 'linear-gradient(135deg, #2DD4BF, #06B6D4)',
+          boxShadow: '0 0 20px rgba(45,212,191,0.3), 0 4px 15px rgba(0,0,0,0.4)',
+        }}
       >
-        <Brain className="w-5 h-5 text-white" />
+        <Brain className="w-5 h-5 text-white" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.3))' }} />
       </motion.button>
     </div>
   );

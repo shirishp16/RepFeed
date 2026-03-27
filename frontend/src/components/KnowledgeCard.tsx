@@ -12,10 +12,10 @@ interface KnowledgeCardProps {
 }
 
 const categoryConfig = {
-  anatomy: { color: 'text-accent', bg: 'bg-accent-soft', border: 'border-accent', gradient: 'from-accent/[0.02]' },
-  recovery: { color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400', gradient: 'from-blue-400/[0.02]' },
-  nutrition: { color: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400', gradient: 'from-green-400/[0.02]' },
-  mindset: { color: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400', gradient: 'from-purple-400/[0.02]' },
+  anatomy:   { color: '#2DD4BF', glow: 'rgba(45,212,191,0.3)',  bg: 'rgba(45,212,191,0.08)',  border: 'rgba(45,212,191,0.2)' },
+  recovery:  { color: '#60A5FA', glow: 'rgba(96,165,250,0.3)',  bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.2)' },
+  nutrition: { color: '#4ADE80', glow: 'rgba(74,222,128,0.3)',  bg: 'rgba(74,222,128,0.08)',  border: 'rgba(74,222,128,0.2)' },
+  mindset:   { color: '#A78BFA', glow: 'rgba(167,139,250,0.3)', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.2)' },
 };
 
 export default function KnowledgeCard({ card }: KnowledgeCardProps) {
@@ -23,28 +23,45 @@ export default function KnowledgeCard({ card }: KnowledgeCardProps) {
 
   return (
     <div className="relative h-[100dvh] w-full flex flex-col justify-center px-6 py-20 overflow-hidden">
-      {/* Subtle gradient */}
+      {/* Floating orb in category color */}
       <div
-        className={`absolute top-0 left-0 w-64 h-64 bg-gradient-to-br ${config.gradient} to-transparent rounded-full blur-3xl pointer-events-none`}
+        className="absolute top-10 left-0 w-72 h-72 rounded-full pointer-events-none"
+        style={{
+          background: `radial-gradient(circle, ${config.bg} 0%, transparent 70%)`,
+          filter: 'blur(80px)',
+        }}
       />
 
-      <div className="max-w-md mx-auto w-full space-y-6">
+      <div className="max-w-md mx-auto w-full space-y-6 relative z-10">
         {/* Category pill */}
         <motion.span
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
-          className={`inline-block px-3 py-1 rounded-full ${config.bg} ${config.color} text-xs font-mono font-bold tracking-wide uppercase`}
+          className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wide uppercase"
+          style={{
+            background: config.bg,
+            color: config.color,
+            border: `1px solid ${config.border}`,
+            boxShadow: `0 0 10px ${config.bg}`,
+          }}
         >
           {card.category}
         </motion.span>
 
         {/* Left accent border + Title */}
-        <div className={`border-l-[3px] ${config.border} pl-4`}>
+        <div
+          className="pl-4"
+          style={{
+            borderLeft: `3px solid ${config.color}`,
+            filter: `drop-shadow(0 0 6px ${config.glow})`,
+          }}
+        >
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
             className="font-outfit text-[26px] font-bold text-text-primary leading-tight"
+            style={{ textShadow: `0 0 30px ${config.bg}` }}
           >
             {card.title}
           </motion.h2>

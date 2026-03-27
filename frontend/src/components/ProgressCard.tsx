@@ -36,27 +36,46 @@ export default function ProgressCard({
 
   return (
     <div className="relative h-dvh w-full flex flex-col justify-center px-6 py-20 overflow-hidden">
-      <div className="max-w-md mx-auto w-full space-y-6">
+      {/* Ambient glow */}
+      <div
+        className="absolute top-1/3 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(45,212,191,0.08) 0%, rgba(139,92,246,0.03) 50%, transparent 70%)',
+          filter: 'blur(60px)',
+        }}
+      />
+
+      <div className="max-w-md mx-auto w-full space-y-6 relative z-10">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <span className="font-mono text-sm font-bold text-accent tracking-widest">
+          <span
+            className="font-mono text-sm font-bold tracking-widest text-accent"
+            style={{ textShadow: '0 0 15px rgba(45,212,191,0.3)' }}
+          >
             YOUR RECOVERY
           </span>
           <motion.div
             animate={{ opacity: [1, 0.3, 1] }}
             transition={{ repeat: Infinity, duration: 2 }}
             className="w-2 h-2 rounded-full bg-accent"
+            style={{ boxShadow: '0 0 6px rgba(45,212,191,0.5)' }}
           />
         </div>
 
-        {/* 2x2 stats grid */}
+        {/* 2x2 stats grid — glass cards */}
         <div className="grid grid-cols-2 gap-3">
           {gridStats.map((stat) => (
             <div
               key={stat.label}
-              className="bg-bg-card border border-border rounded-xl p-4 flex flex-col"
+              className="rounded-xl p-4 flex flex-col"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(45, 212, 191, 0.1)',
+                boxShadow: '0 0 15px rgba(45,212,191,0.03), 0 4px 20px rgba(0,0,0,0.2)',
+              }}
             >
-              <span className="font-outfit text-[48px] font-bold text-text-primary leading-none">
+              <span className="font-outfit text-[48px] font-bold leading-none gradient-text">
                 {stat.value}
               </span>
               <span className="font-mono text-xs text-text-muted mt-1 tracking-wide">
@@ -68,8 +87,17 @@ export default function ProgressCard({
 
         {/* Session streak */}
         {streak > 0 && (
-          <div className="bg-bg-card border border-border rounded-xl p-4 flex items-center gap-3">
-            <span className="font-outfit text-3xl font-bold text-accent">{streak}</span>
+          <div
+            className="rounded-xl p-4 flex items-center gap-3"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(45, 212, 191, 0.15)',
+              boxShadow: '0 0 20px rgba(45,212,191,0.06)',
+              animation: 'pulse-border 3s infinite',
+            }}
+          >
+            <span className="font-outfit text-3xl font-bold gradient-text">{streak}</span>
             <div>
               <p className="font-outfit text-sm font-bold text-text-primary">
                 Exercise{streak !== 1 ? 's' : ''} completed this session
@@ -81,21 +109,34 @@ export default function ProgressCard({
 
         {/* Exercise history */}
         {exerciseHistory.length > 0 ? (
-          <div className="bg-bg-card border border-border rounded-xl p-4 space-y-2">
+          <div
+            className="rounded-xl p-4 space-y-2"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
             <span className="font-mono text-xs text-text-muted tracking-wide">
               COMPLETED THIS SESSION
             </span>
             <div className="space-y-1 mt-2">
               {exerciseHistory.map((name, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-success text-xs">✓</span>
+                  <span className="text-success text-xs" style={{ textShadow: '0 0 6px rgba(34,197,94,0.4)' }}>✓</span>
                   <span className="font-outfit text-sm text-text-primary">{name}</span>
                 </div>
               ))}
             </div>
           </div>
         ) : (
-          <div className="bg-bg-card border border-border rounded-xl p-4">
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
             <p className="font-outfit text-sm text-text-secondary text-center">
               Complete an exercise to track your progress
             </p>
@@ -103,7 +144,10 @@ export default function ProgressCard({
         )}
 
         {/* Motivational quote */}
-        <p className="text-center text-sm text-text-secondary font-outfit italic">
+        <p
+          className="text-center text-sm text-text-secondary font-outfit italic"
+          style={{ textShadow: '0 0 20px rgba(45,212,191,0.06)' }}
+        >
           &ldquo;{quote}&rdquo;
         </p>
       </div>

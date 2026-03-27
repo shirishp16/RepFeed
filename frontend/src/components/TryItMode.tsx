@@ -18,7 +18,6 @@ interface TryItModeProps {
 
 type CameraPhase = 'prompt' | 'countdown' | 'tracking' | 'fallback';
 
-// SVG skeleton figure for the fallback/demo mode
 function SkeletonFigure() {
   return (
     <svg
@@ -53,11 +52,8 @@ export default function TryItMode({
 
   const exerciseType: ExerciseType = exercise?.exerciseType ?? 'generic';
   const targetReps = exercise?.reps ?? 5;
-
-  // Derive showComplete from reps — no effect needed
   const showComplete = reps >= Math.min(targetReps, 5);
 
-  // Reset state when overlay is dismissed by the parent
   useEffect(() => {
     if (!active) {
       setReps(0);
@@ -67,10 +63,8 @@ export default function TryItMode({
     }
   }, [active]);
 
-  // Countdown timer
   useEffect(() => {
     if (cameraPhase !== 'countdown') return;
-
     const timer = setTimeout(() => {
       setCountdown((c) => {
         if (c <= 1) {
@@ -83,10 +77,8 @@ export default function TryItMode({
     return () => clearTimeout(timer);
   }, [cameraPhase, countdown]);
 
-  // Fallback auto-demo mode (original behaviour)
   useEffect(() => {
     if (cameraPhase !== 'fallback' || !active) return;
-
     const interval = setInterval(() => {
       setReps((prev) => {
         if (prev >= 5) {
@@ -96,16 +88,13 @@ export default function TryItMode({
         return prev + 1;
       });
     }, 2500);
-
     const scoreTimer = setTimeout(() => setFormScore(84), 1500);
-
     return () => {
       clearInterval(interval);
       clearTimeout(scoreTimer);
     };
   }, [cameraPhase, active]);
 
-  // PoseCamera callbacks
   const handleRepCounted = useCallback((count: number) => {
     setReps(count);
   }, []);
@@ -124,26 +113,51 @@ export default function TryItMode({
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-[70] bg-bg flex flex-col"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="font-outfit text-lg font-bold text-text-primary">
+          {/* Header — glassmorphism */}
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{
+              background: 'rgba(6, 6, 6, 0.6)',
+              backdropFilter: 'blur(16px)',
+              borderBottom: '1px solid rgba(45, 212, 191, 0.1)',
+            }}
+          >
+            <h3
+              className="font-outfit text-lg font-bold text-text-primary"
+              style={{ textShadow: '0 0 15px rgba(45,212,191,0.1)' }}
+            >
               {exercise.name}
             </h3>
             <button
               onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-elevated"
+              className="w-10 h-10 flex items-center justify-center rounded-full transition-all"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
             >
               <X className="w-5 h-5 text-text-secondary" />
             </button>
           </div>
 
           {/* Main area */}
-          <div className="flex-1 relative flex items-center justify-center bg-bg-card overflow-hidden">
-            {/* Phase: Camera permission prompt */}
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden"
+            style={{ background: 'rgba(14, 14, 14, 0.8)' }}
+          >
+            {/* Camera permission prompt */}
             {cameraPhase === 'prompt' && (
               <div className="flex flex-col items-center gap-6 px-6 max-w-sm">
-                <div className="w-20 h-20 rounded-full bg-bg-elevated flex items-center justify-center">
-                  <Camera className="w-10 h-10 text-accent" />
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center"
+                  style={{
+                    background: 'rgba(45, 212, 191, 0.08)',
+                    border: '1px solid rgba(45, 212, 191, 0.15)',
+                    boxShadow: '0 0 25px rgba(45,212,191,0.1)',
+                  }}
+                >
+                  <Camera className="w-10 h-10 text-accent"
+                    style={{ filter: 'drop-shadow(0 0 8px rgba(45,212,191,0.4))' }}
+                  />
                 </div>
                 <div className="text-center space-y-2">
                   <p className="font-outfit text-base font-bold text-text-primary">
@@ -155,19 +169,39 @@ export default function TryItMode({
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 w-full">
+                  {/* Enable Camera — gradient button */}
                   <button
                     onClick={() => {
                       setCountdown(3);
                       setCameraPhase('countdown');
                     }}
-                    className="w-full h-12 rounded-xl bg-accent text-white font-outfit font-bold text-base flex items-center justify-center gap-2"
+                    className="w-full h-12 rounded-xl font-outfit font-bold text-base flex items-center justify-center gap-2 text-white relative overflow-hidden"
+                    style={{
+                      backgroundImage: 'linear-gradient(135deg, #2DD4BF, #06B6D4, #8B5CF6)',
+                      backgroundSize: '200% 200%',
+                      animation: 'mesh-shift 4s ease-in-out infinite',
+                      boxShadow: '0 0 20px rgba(45,212,191,0.25), 0 4px 15px rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
                   >
-                    <Camera className="w-5 h-5" />
-                    Enable Camera
+                    <Camera className="w-5 h-5 relative z-10" />
+                    <span className="relative z-10">Enable Camera</span>
+                    <div
+                      className="absolute inset-0 opacity-30"
+                      style={{
+                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                        animation: 'shimmer-btn 3s infinite',
+                      }}
+                    />
                   </button>
+                  {/* Skip — glass button */}
                   <button
                     onClick={() => setCameraPhase('fallback')}
-                    className="w-full h-10 rounded-xl bg-bg-elevated text-text-secondary font-outfit text-sm flex items-center justify-center gap-2"
+                    className="w-full h-10 rounded-xl font-outfit text-sm flex items-center justify-center gap-2 text-text-secondary transition-all"
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
                   >
                     <Play className="w-4 h-4" />
                     Skip (Demo Mode)
@@ -176,7 +210,7 @@ export default function TryItMode({
               </div>
             )}
 
-            {/* Phase: Countdown */}
+            {/* Countdown */}
             {cameraPhase === 'countdown' && (
               <div className="flex flex-col items-center gap-4">
                 <p className="font-mono text-sm text-text-muted tracking-widest">
@@ -189,7 +223,8 @@ export default function TryItMode({
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 1.5, opacity: 0 }}
                     transition={{ duration: 0.4 }}
-                    className="font-outfit text-[120px] font-bold text-accent leading-none"
+                    className="font-outfit text-[120px] font-bold leading-none gradient-text"
+                    style={{ filter: 'drop-shadow(0 0 30px rgba(45,212,191,0.4))' }}
                   >
                     {countdown > 0 ? countdown : 'GO!'}
                   </motion.span>
@@ -197,7 +232,7 @@ export default function TryItMode({
               </div>
             )}
 
-            {/* Phase: Live camera tracking */}
+            {/* Live camera */}
             {cameraPhase === 'tracking' && (
               <PoseCamera
                 exerciseType={exerciseType}
@@ -207,7 +242,7 @@ export default function TryItMode({
               />
             )}
 
-            {/* Phase: Fallback demo */}
+            {/* Fallback demo */}
             {cameraPhase === 'fallback' && (
               <div className="flex flex-col items-center gap-4">
                 <motion.div
@@ -222,7 +257,7 @@ export default function TryItMode({
               </div>
             )}
 
-            {/* Overlays: Rep counter & form score (all phases except prompt) */}
+            {/* Overlays */}
             {cameraPhase !== 'prompt' && (
               <>
                 <div className="absolute top-4 left-4 z-10">
@@ -235,8 +270,15 @@ export default function TryItMode({
             )}
           </div>
 
-          {/* Bottom banner */}
-          <div className="px-4 py-4 border-t border-border bg-bg-card">
+          {/* Bottom banner — glass */}
+          <div
+            className="px-4 py-4"
+            style={{
+              background: 'rgba(14, 14, 14, 0.8)',
+              backdropFilter: 'blur(16px)',
+              borderTop: '1px solid rgba(45, 212, 191, 0.08)',
+            }}
+          >
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="font-outfit text-sm text-text-primary font-bold">
@@ -248,7 +290,14 @@ export default function TryItMode({
                     : exercise.duration}
                 </p>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-active-soft text-active text-xs font-mono font-bold">
+              <span
+                className="px-2 py-0.5 rounded-full text-xs font-mono font-bold text-accent"
+                style={{
+                  background: 'rgba(45,212,191,0.1)',
+                  border: '1px solid rgba(45,212,191,0.15)',
+                  boxShadow: '0 0 6px rgba(45,212,191,0.08)',
+                }}
+              >
                 +50 XP
               </span>
             </div>
@@ -258,10 +307,24 @@ export default function TryItMode({
                 <motion.button
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => onComplete({ reps, formScore })}
-                  className="w-full h-12 rounded-xl bg-success text-white font-outfit font-bold text-base flex items-center justify-center"
+                  className="w-full h-12 rounded-xl font-outfit font-bold text-base flex items-center justify-center text-white relative overflow-hidden"
+                  style={{
+                    backgroundImage: 'linear-gradient(135deg, #22C55E, #2DD4BF)',
+                    boxShadow: '0 0 20px rgba(34,197,94,0.2), 0 0 40px rgba(45,212,191,0.1)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
                 >
-                  Complete Exercise ✓
+                  <span className="relative z-10">Complete Exercise ✓</span>
+                  <div
+                    className="absolute inset-0 opacity-30"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                      animation: 'shimmer-btn 2s infinite',
+                    }}
+                  />
                 </motion.button>
               )}
             </AnimatePresence>
