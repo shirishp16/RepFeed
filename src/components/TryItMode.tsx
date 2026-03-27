@@ -12,7 +12,7 @@ import FormScoreRing from './FormScoreRing';
 interface TryItModeProps {
   active: boolean;
   exercise: ExerciseCard | null;
-  onComplete: () => void;
+  onComplete: (data: { reps: number; formScore: number }) => void;
   onClose: () => void;
 }
 
@@ -258,7 +258,7 @@ export default function TryItMode({
                 <motion.button
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  onClick={onComplete}
+                  onClick={() => onComplete({ reps, formScore })}
                   className="w-full h-12 rounded-xl bg-success text-white font-outfit font-bold text-base flex items-center justify-center"
                 >
                   Complete Exercise ✓

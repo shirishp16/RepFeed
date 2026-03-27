@@ -24,6 +24,11 @@ export default function Home() {
       <FeedContainer
         cards={feed.cards}
         xp={feed.xp}
+        exercisesCompleted={feed.exercisesCompleted}
+        avgFormScore={feed.avgFormScore}
+        totalReps={feed.totalReps}
+        streak={feed.streak}
+        exerciseHistory={feed.exerciseHistory}
         onCardVisible={feed.onCardVisible}
         onLike={feed.onLike}
         onTooEasy={feed.onTooEasy}

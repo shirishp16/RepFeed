@@ -10,6 +10,11 @@ import type { ExerciseCard as ExerciseCardType } from '@/data/mockData';
 interface FeedContainerProps {
   cards: FeedCard[];
   xp: number;
+  exercisesCompleted: number;
+  avgFormScore: number;
+  totalReps: number;
+  streak: number;
+  exerciseHistory: string[];
   onCardVisible: (index: number) => void;
   onLike: (id: string) => void;
   onTooEasy: (id: string) => void;
@@ -20,6 +25,11 @@ interface FeedContainerProps {
 export default function FeedContainer({
   cards,
   xp,
+  exercisesCompleted,
+  avgFormScore,
+  totalReps,
+  streak,
+  exerciseHistory,
   onCardVisible,
   onLike,
   onTooEasy,
@@ -69,10 +79,12 @@ export default function FeedContainer({
   return (
     <div
       ref={containerRef}
-      className="h-[100dvh] overflow-y-scroll"
+      className="feed-container h-[100dvh] overflow-y-scroll"
       style={{
         scrollSnapType: 'y mandatory',
+        WebkitOverflowScrolling: 'touch',
         touchAction: 'pan-y',
+        scrollbarWidth: 'none',
       }}
     >
       {cards.map((card, index) => (
@@ -80,7 +92,7 @@ export default function FeedContainer({
           key={card.id}
           ref={setCardRef(index)}
           className="h-[100dvh]"
-          style={{ scrollSnapAlign: 'start' }}
+          style={{ scrollSnapAlign: 'start', scrollSnapStop: 'always', flexShrink: 0 }}
         >
           {card.type === 'exercise' && (
             <ExerciseCard
@@ -92,7 +104,16 @@ export default function FeedContainer({
             />
           )}
           {card.type === 'knowledge' && <KnowledgeCard card={card} />}
-          {card.type === 'progress' && <ProgressCard xp={xp} />}
+          {card.type === 'progress' && (
+              <ProgressCard
+                xp={xp}
+                exercisesCompleted={exercisesCompleted}
+                avgFormScore={avgFormScore}
+                totalReps={totalReps}
+                streak={streak}
+                exerciseHistory={exerciseHistory}
+              />
+            )}
         </div>
       ))}
     </div>

@@ -236,6 +236,7 @@ export default function PoseCamera({
   const trackerRef = useRef<RepTracker>(createRepTracker());
   const streamRef = useRef<MediaStream | null>(null);
   const lastRepCount = useRef(0);
+  const debugFrameRef = useRef(0);
 
   // Smoothing buffer ref
   const landmarkBufferRef = useRef<NormalizedLandmark[][]>([]);
@@ -269,6 +270,7 @@ export default function PoseCamera({
     activeLegRef.current = 'both';
     frameBufferRef.current = [];
     landmarkBufferRef.current = [];
+    debugFrameRef.current = 0;
   }, []);
 
   const switchLeg = useCallback(() => {
@@ -379,6 +381,17 @@ export default function PoseCamera({
               }
 
               onFormUpdate(avgFormScore(trackerRef.current));
+
+              // Debug logging every 30 frames — remove after verifying rep counting works
+              debugFrameRef.current++;
+              if (debugFrameRef.current % 30 === 0) {
+                console.log('[PoseCamera]', {
+                  angle: state.angle,
+                  repState: state.repState,
+                  count: trackerRef.current.count,
+                  formScore: state.formScore,
+                });
+              }
 
               drawSkeleton(
                 ctx,

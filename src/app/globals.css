@@ -43,6 +43,10 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+.feed-container::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   background: var(--bg);
   color: var(--text-primary);

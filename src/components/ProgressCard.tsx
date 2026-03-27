@@ -2,37 +2,40 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { mockUserStats, motivationalQuotes } from '@/data/mockData';
+import { motivationalQuotes } from '@/data/mockData';
 
 interface ProgressCardProps {
   xp: number;
+  exercisesCompleted: number;
+  avgFormScore: number;
+  totalReps: number;
+  streak: number;
+  exerciseHistory: string[];
 }
 
-export default function ProgressCard({ xp }: ProgressCardProps) {
-  const stats = mockUserStats;
+export default function ProgressCard({
+  xp,
+  exercisesCompleted,
+  avgFormScore,
+  totalReps,
+  streak,
+  exerciseHistory,
+}: ProgressCardProps) {
   const [quote, setQuote] = useState(motivationalQuotes[0]);
 
   useEffect(() => {
     setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
   }, []);
 
-  const rom = stats.rangeOfMotion;
-  const romData = [
-    { label: 'Week 1', value: rom.week1 },
-    { label: 'Week 2', value: rom.week2 },
-    { label: 'Week 3', value: rom.week3 },
-    { label: 'Current', value: rom.current },
-  ];
-
   const gridStats = [
-    { label: 'Exercises', value: stats.exercisesCompleted },
-    { label: 'Form Score', value: `${stats.avgFormScore}%` },
-    { label: 'Total Reps', value: stats.totalReps },
+    { label: 'Exercises', value: exercisesCompleted },
+    { label: 'Form Score', value: avgFormScore > 0 ? `${avgFormScore}%` : '—' },
+    { label: 'Total Reps', value: totalReps },
     { label: 'XP Earned', value: xp },
   ];
 
   return (
-    <div className="relative h-[100dvh] w-full flex flex-col justify-center px-6 py-20 overflow-hidden">
+    <div className="relative h-dvh w-full flex flex-col justify-center px-6 py-20 overflow-hidden">
       <div className="max-w-md mx-auto w-full space-y-6">
         {/* Header */}
         <div className="flex items-center gap-2">
@@ -63,39 +66,41 @@ export default function ProgressCard({ xp }: ProgressCardProps) {
           ))}
         </div>
 
-        {/* ROM bar chart */}
-        <div className="bg-bg-card border border-border rounded-xl p-4 space-y-3">
-          <span className="font-mono text-xs text-text-muted tracking-wide">
-            RANGE OF MOTION (degrees)
-          </span>
-          <div className="space-y-2">
-            {romData.map((item, i) => {
-              const isCurrentWeek = i === romData.length - 1;
-              return (
-                <div key={item.label} className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-text-muted w-16 shrink-0">
-                    {item.label}
-                  </span>
-                  <div className="flex-1 h-5 bg-bg-elevated rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(item.value / 120) * 100}%` }}
-                      transition={{ duration: 0.8, delay: i * 0.15 }}
-                      className={`h-full rounded-full ${
-                        isCurrentWeek
-                          ? 'bg-accent shadow-[0_0_12px_var(--accent-glow)]'
-                          : 'bg-accent/50'
-                      }`}
-                    />
-                  </div>
-                  <span className="font-mono text-xs text-text-primary w-8 text-right">
-                    {item.value}°
-                  </span>
-                </div>
-              );
-            })}
+        {/* Session streak */}
+        {streak > 0 && (
+          <div className="bg-bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+            <span className="font-outfit text-3xl font-bold text-accent">{streak}</span>
+            <div>
+              <p className="font-outfit text-sm font-bold text-text-primary">
+                Exercise{streak !== 1 ? 's' : ''} completed this session
+              </p>
+              <p className="font-mono text-xs text-text-muted tracking-wide">STREAK</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Exercise history */}
+        {exerciseHistory.length > 0 ? (
+          <div className="bg-bg-card border border-border rounded-xl p-4 space-y-2">
+            <span className="font-mono text-xs text-text-muted tracking-wide">
+              COMPLETED THIS SESSION
+            </span>
+            <div className="space-y-1 mt-2">
+              {exerciseHistory.map((name, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-success text-xs">✓</span>
+                  <span className="font-outfit text-sm text-text-primary">{name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-bg-card border border-border rounded-xl p-4">
+            <p className="font-outfit text-sm text-text-secondary text-center">
+              Complete an exercise to track your progress
+            </p>
+          </div>
+        )}
 
         {/* Motivational quote */}
         <p className="text-center text-sm text-text-secondary font-outfit italic">
