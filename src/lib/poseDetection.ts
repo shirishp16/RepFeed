@@ -77,7 +77,7 @@ export const EXERCISE_JOINTS: Record<ExerciseType, number[]> = {
   squat: [23, 24, 25, 26, 27, 28],
   wall_sit: [23, 24, 25, 26, 27, 28],
   calf_raise: [25, 26, 27, 28, 29, 30, 31, 32],
-  hamstring_curl: [23, 24, 25, 26],
+  hamstring_curl: [23, 24, 25, 26, 27, 28],
   single_leg_balance: [23, 24, 25, 26, 27, 28],
   single_leg_rdl: [11, 12, 23, 24, 25, 26],
   generic: [],
@@ -170,14 +170,14 @@ export function detectSquat(landmarks: NormalizedLandmark[]): ExerciseState {
   if (kneeAngle < 120) repState = 'down';
   else if (kneeAngle > 160) repState = 'up';
 
-  // Form score 0-100
-  let formScore = 100;
+  // Form score — start at realistic baseline, penalise form errors
+  let formScore = 85;
   // Penalise knees going too far past toes (knee x vs ankle x)
   const kneeOverToe = Math.abs(knee.x - ankle.x);
-  if (kneeOverToe > 0.06) formScore -= Math.min(30, (kneeOverToe - 0.06) * 500);
+  if (kneeOverToe > 0.06) formScore -= Math.min(25, (kneeOverToe - 0.06) * 400);
   // Penalise forward lean (shoulder x far from hip x)
   const lean = Math.abs(shoulder.x - hip.x);
-  if (lean > 0.08) formScore -= Math.min(30, (lean - 0.08) * 400);
+  if (lean > 0.08) formScore -= Math.min(25, (lean - 0.08) * 300);
   formScore = Math.max(0, Math.round(formScore));
 
   return { repState, angle: Math.round(kneeAngle), formScore };
@@ -195,9 +195,9 @@ export function detectWallSit(landmarks: NormalizedLandmark[]): ExerciseState {
   if (kneeAngle >= 70 && kneeAngle <= 110) repState = 'hold';
 
   // Form: back should be vertical (shoulder x ≈ hip x)
-  let formScore = 100;
+  let formScore = 85;
   const backLean = Math.abs(shoulder.x - hip.x);
-  if (backLean > 0.05) formScore -= Math.min(40, (backLean - 0.05) * 500);
+  if (backLean > 0.05) formScore -= Math.min(35, (backLean - 0.05) * 400);
   formScore = Math.max(0, Math.round(formScore));
 
   return { repState, angle: Math.round(kneeAngle), formScore };
@@ -223,8 +223,36 @@ export function detectCalfRaise(
   const kneeAngle = calculateAngle(hipAvg, knee, ankle);
 
   // Form: knees should stay straight (> 170°)
-  let formScore = 100;
-  if (kneeAngle < 170) formScore -= Math.min(40, (170 - kneeAngle) * 3);
+  let formScore = 85;
+  if (kneeAngle < 170) formScore -= Math.min(35, (170 - kneeAngle) * 2.5);
+  formScore = Math.max(0, Math.round(formScore));
+
+  return { repState, angle: Math.round(kneeAngle), formScore };
+}
+
+export function detectHamstringCurl(
+  landmarks: NormalizedLandmark[],
+): ExerciseState {
+  const hip = avg(landmarks, LEFT_HIP, RIGHT_HIP);
+  const knee = avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
+  const ankle = avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
+  const shoulder = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
+
+  // Hip-knee-ankle angle: ~170° when standing straight, ~90-130° when curled
+  const kneeAngle = calculateAngle(hip, knee, ankle);
+
+  let repState: ExerciseState['repState'] = 'hold';
+  if (kneeAngle > 160) repState = 'up';       // leg straight (standing)
+  else if (kneeAngle < 130) repState = 'down'; // foot kicked back toward glute
+
+  // Form score: hip stability (hip y shouldn't drift) + upright torso
+  let formScore = 85; // realistic baseline — not perfect by default
+  // Penalise hip hiking (shoulder-hip vertical delta: torso should stay upright)
+  const torsoLean = Math.abs(shoulder.x - hip.x);
+  if (torsoLean > 0.06) formScore -= Math.min(25, (torsoLean - 0.06) * 400);
+  // Penalise hip moving forward/backward relative to knee
+  const hipDrift = Math.abs(hip.x - knee.x);
+  if (hipDrift > 0.15) formScore -= Math.min(20, (hipDrift - 0.15) * 200);
   formScore = Math.max(0, Math.round(formScore));
 
   return { repState, angle: Math.round(kneeAngle), formScore };

@@ -7,6 +7,7 @@ import {
   detectSquat,
   detectWallSit,
   detectCalfRaise,
+  detectHamstringCurl,
   updateRepCount,
   createRepTracker,
   avgFormScore,
@@ -39,6 +40,8 @@ function detect(type: ExerciseType, landmarks: NormalizedLandmark[]) {
       return detectWallSit(landmarks);
     case 'calf_raise':
       return detectCalfRaise(landmarks);
+    case 'hamstring_curl':
+      return detectHamstringCurl(landmarks);
     // Unsupported types fall through to a simple skeleton display
     default:
       return detectSquat(landmarks); // use squat as generic fallback
@@ -309,7 +312,6 @@ export default function PoseCamera({
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full object-cover"
-        style={{ transform: 'scaleX(-1)' }}
       />
     </div>
   );

@@ -171,7 +171,7 @@ export const exercises: ExerciseCard[] = [
     xpReward: 30,
     muscleGroups: ['Stabilizers', 'Core', 'Ankle Complex'],
     canTryIt: true,
-    exerciseType: 'single_leg_balance',
+    exerciseType: 'wall_sit',
   },
 
   // Hard (7-10)
@@ -227,8 +227,7 @@ export const exercises: ExerciseCard[] = [
     reps: 8,
     xpReward: 45,
     muscleGroups: ['Hamstrings', 'Glutes', 'Core', 'Stabilizers'],
-    canTryIt: true,
-    exerciseType: 'single_leg_rdl',
+    canTryIt: false,
   },
   {
     id: 'ex-15',
