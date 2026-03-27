@@ -164,18 +164,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [direction, setDirection] = useState(1);
 
   useEffect(() => {
-    if (screen === 2) {
-      const timer = setTimeout(() => setAnimDone(true), 2200);
-      return () => clearTimeout(timer);
-    }
+    // nothing to do for screen 2 anymore
   }, [screen]);
-
-  useEffect(() => {
-    if (screen === 2 && typewriterIndex < typewriterTexts.length - 1) {
-      const timer = setTimeout(() => setTypewriterIndex((i) => i + 1), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [screen, typewriterIndex]);
 
   const goNext = () => {
     setDirection(1);
@@ -228,7 +218,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       {/* Progress dots */}
       <div className="flex items-center justify-center gap-3 pb-4 relative z-10">
-        {[0, 1, 2].map((i) => (
+        {[0, 1].map((i) => (
           <motion.div
             key={i}
             animate={{
@@ -523,7 +513,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 transition={{ delay: 0.5, duration: 0.4 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={goNext}
+                onClick={() => onComplete({
+                  condition: selectedCondition === 'other' ? otherText || 'General' : selectedCondition || 'ACL',
+                  phase: phases.find(p => p.id === selectedPhase)?.label || 'Building Strength',
+                })}
                 disabled={!selectedPhase}
                 className="w-full h-14 rounded-2xl font-outfit text-[15px] font-semibold tracking-wider relative overflow-hidden disabled:opacity-25 disabled:cursor-not-allowed transition-all duration-300"
                 style={{
@@ -548,101 +541,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   }}
                 />
               </motion.button>
-            </motion.div>
-          )}
-
-          {/* ─── Screen 3: Body Scan ────────────────────────────────── */}
-          {screen === 2 && (
-            <motion.div
-              key="screen-2"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.4, ease }}
-              className="w-full max-w-sm flex flex-col items-center gap-8"
-            >
-              {/* SVG skeleton body */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div
-                    className="w-40 h-40 rounded-full"
-                    style={{
-                      background: 'radial-gradient(circle, rgba(45,212,191,0.15) 0%, rgba(139,92,246,0.05) 50%, transparent 70%)',
-                      filter: 'blur(30px)',
-                    }}
-                  />
-                </div>
-                <svg width={160} height={200} viewBox="0 0 100 200" className="relative z-10">
-                  {bodyLines.map(([a, b], i) => (
-                    <line
-                      key={`line-${i}`}
-                      x1={bodyJoints[a].cx} y1={bodyJoints[a].cy}
-                      x2={bodyJoints[b].cx} y2={bodyJoints[b].cy}
-                      stroke="rgba(45, 212, 191, 0.25)" strokeWidth="1.5"
-                    />
-                  ))}
-                  {bodyJoints.map((joint, i) => (
-                    <circle
-                      key={`joint-${i}`}
-                      cx={joint.cx} cy={joint.cy} r={4}
-                      fill="#2DD4BF"
-                      className="body-scan-dot"
-                      style={{ animationDelay: `${joint.delay}s` }}
-                    />
-                  ))}
-                  <circle cx={50} cy={20} r={10} fill="none" stroke="#2DD4BF" strokeWidth="1.5"
-                    className="body-scan-dot" style={{ animationDelay: '1.7s' }} />
-                </svg>
-              </div>
-
-              {/* Typewriter */}
-              <div className="h-6 flex items-center">
-                <motion.p
-                  key={typewriterIndex}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="font-mono text-sm text-white/35 typewriter"
-                >
-                  {typewriterTexts[typewriterIndex]}
-                </motion.p>
-              </div>
-
-              {/* Start button */}
-              <AnimatePresence>
-                {animDone && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => onComplete({
-                      condition: selectedCondition === 'other' ? otherText || 'General' : selectedCondition || 'ACL',
-                      phase: phases.find(p => p.id === selectedPhase)?.label || 'Building Strength',
-                    })}
-                    className="w-full h-14 rounded-2xl font-outfit font-bold text-base tracking-wider relative overflow-hidden"
-                    style={{
-                      backgroundImage: 'linear-gradient(135deg, #2DD4BF, #06B6D4, #8B5CF6)',
-                      backgroundSize: '200% 200%',
-                      animation: 'mesh-shift 4s ease-in-out infinite',
-                      color: '#fff',
-                      boxShadow: '0 0 30px rgba(45,212,191,0.35), 0 0 60px rgba(139,92,246,0.15), 0 4px 20px rgba(0,0,0,0.3)',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                    }}
-                  >
-                    <span className="relative z-10">Start Scrolling →</span>
-                    <div
-                      className="absolute inset-0 opacity-40"
-                      style={{
-                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)',
-                        animation: 'shimmer-btn 2s infinite',
-                      }}
-                    />
-                  </motion.button>
-                )}
-              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

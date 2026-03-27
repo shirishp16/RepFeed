@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Zap } from 'lucide-react';
+
 
 interface TopBarProps {
   xp: number;
@@ -57,34 +57,6 @@ export default function TopBar({ xp, streak, phase }: TopBarProps) {
         </motion.div>
       )}
 
-      {/* XP + Streak */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1">
-          <Zap className="w-4 h-4 text-accent" fill="currentColor"
-            style={{ filter: 'drop-shadow(0 0 4px rgba(45,212,191,0.4))' }}
-          />
-          <motion.span
-            key={xp}
-            initial={{ scale: 1.3, color: '#2DD4BF' }}
-            animate={{ scale: 1, color: 'var(--text-primary)' }}
-            className="font-mono text-sm font-bold"
-          >
-            {xp}
-          </motion.span>
-        </div>
-        <div
-          className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}
-        >
-          <span className="text-sm">🔥</span>
-          <span className="font-mono text-sm font-bold text-text-primary">
-            {streak}
-          </span>
-        </div>
-      </div>
     </div>
   );
 }

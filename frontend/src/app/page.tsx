@@ -7,7 +7,6 @@ import TopBar from '@/components/TopBar';
 import FeedContainer from '@/components/FeedContainer';
 import TryItMode from '@/components/TryItMode';
 import OnboardingFlow from '@/components/OnboardingFlow';
-import RehabProfile from '@/components/RehabProfile';
 import FeedRecalibrating from '@/components/FeedRecalibrating';
 
 /* ── Body Scan skeleton data (same as OnboardingFlow) ──────────── */
@@ -45,7 +44,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative h-[100dvh] w-full max-w-[480px] mx-auto bg-bg overflow-hidden">
+    <div className="relative h-[100dvh] w-full bg-bg overflow-hidden">
       {/* Top Bar */}
       <TopBar xp={feed.xp} streak={feed.streak} phase={feed.phase ?? ''} />
 
@@ -202,11 +201,6 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Rehab Profile */}
-      <RehabProfile
-        preferenceVector={feed.preferenceVector}
-        cardsViewed={feed.currentIndex}
-      />
 
       {/* TryIt Overlay */}
       <TryItMode
