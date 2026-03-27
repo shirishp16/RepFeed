@@ -15,6 +15,9 @@ import {
   avgFormScore,
   POSE_CONNECTIONS,
   EXERCISE_JOINTS,
+  LEFT_LEG_SET,
+  RIGHT_LEG_SET,
+  getExerciseJoints,
   type ExerciseType,
   type ActiveLeg,
   type RepTracker,
@@ -32,10 +35,6 @@ const SINGLE_LEG_EXERCISES = new Set<ExerciseType>([
   'calf_raise',
   'single_leg_balance',
 ]);
-
-// Leg index sets (MediaPipe indices)
-const LEFT_LEG_SET = new Set([23, 25, 27, 29, 31]);
-const RIGHT_LEG_SET = new Set([24, 26, 28, 30, 32]);
 
 interface PoseCameraProps {
   exerciseType: ExerciseType;
@@ -163,10 +162,12 @@ function drawSkeleton(
     }
 
     if (highlighted) {
+      // Pulse animation for highlighted joints
+      const pulse = Math.sin(performance.now() / 150) * 0.15 + 1.0;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, 14, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(249,115,22,0.35)';
+      ctx.arc(cx, cy, 14 * pulse, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.35)';
       ctx.fill();
       ctx.restore();
     }
@@ -328,100 +329,117 @@ export default function PoseCamera({
         const ctx = canvas.getContext('2d')!;
 
         function detectFrame() {
-          if (cancelled) return;
+          if (cancelled || !pose) return;
 
-          const results = pose.detectForVideo(video, performance.now());
-          const landmarks = results.landmarks?.[0];
+          try {
+            const results = pose.detectForVideo(video, performance.now());
+            const landmarks = results.landmarks?.[0];
 
-          if (landmarks) {
-            const smoothed = smoothLandmarks(landmarks, landmarkBufferRef);
-            const phase = calibPhaseRef.current;
-            const elapsed = performance.now() - phaseStartRef.current;
+            if (landmarks) {
+              const smoothed = smoothLandmarks(landmarks, landmarkBufferRef);
+              const phase = calibPhaseRef.current;
+              const elapsed = performance.now() - phaseStartRef.current;
 
-            // ── Calibration phase transitions ──────────────────────────────
-            if (phase === 'stand_back') {
-              if (elapsed > 2000 || lowerBodyVisible(smoothed)) {
-                calibPhaseRef.current = 'detecting';
-                phaseStartRef.current = performance.now();
-                frameBufferRef.current = [];
-                setCalibPhase('detecting');
+              // ── Calibration phase transitions ──────────────────────────────
+              if (phase === 'stand_back') {
+                if (elapsed > 2000 || lowerBodyVisible(smoothed)) {
+                  calibPhaseRef.current = 'detecting';
+                  phaseStartRef.current = performance.now();
+                  frameBufferRef.current = [];
+                  setCalibPhase('detecting');
+                }
+              } else if (phase === 'detecting') {
+                frameBufferRef.current.push(smoothed);
+                if (elapsed > 1500) {
+                  const leg = detectActiveLeg(frameBufferRef.current);
+                  activeLegRef.current = leg;
+                  calibPhaseRef.current = 'confirmed';
+                  phaseStartRef.current = performance.now();
+                  setActiveLeg(leg);
+                  setCalibPhase('confirmed');
+                }
+              } else if (phase === 'confirmed') {
+                if (elapsed > 1000) {
+                  calibPhaseRef.current = 'tracking';
+                  setCalibPhase('tracking');
+                } else {
+                  // Show confirmed leg pulse in Phase 3
+                  drawSkeleton(
+                    ctx,
+                    smoothed,
+                    canvas,
+                    getExerciseJoints(exerciseType, activeLegRef.current),
+                    0,
+                    exerciseType,
+                    activeLegRef.current,
+                    true,
+                  );
+                  animFrameRef.current = requestAnimationFrame(detectFrame);
+                  return;
+                }
+              } else {
+                // ── Normal tracking ────────────────────────────────────────
+                const state = detect(
+                  exerciseType,
+                  smoothed,
+                  activeLegRef.current,
+                );
+
+                trackerRef.current = updateRepCount(
+                  trackerRef.current,
+                  state,
+                  exerciseType,
+                );
+
+                if (trackerRef.current.count > lastRepCount.current) {
+                  lastRepCount.current = trackerRef.current.count;
+                  onRepCounted(trackerRef.current.count);
+                }
+
+                onFormUpdate(avgFormScore(trackerRef.current));
+
+                // Debug logging every 30 frames
+                debugFrameRef.current++;
+                if (debugFrameRef.current % 30 === 0) {
+                  console.log('[PoseCamera]', {
+                    angle: state.angle,
+                    repState: state.repState,
+                    count: trackerRef.current.count,
+                    formScore: state.formScore,
+                  });
+                }
+
+                drawSkeleton(
+                  ctx,
+                  smoothed,
+                  canvas,
+                  getExerciseJoints(exerciseType, activeLegRef.current),
+                  state.angle,
+                  exerciseType,
+                  activeLegRef.current,
+                  true,
+                );
               }
-            } else if (phase === 'detecting') {
-              frameBufferRef.current.push(smoothed);
-              if (elapsed > 1500) {
-                const leg = detectActiveLeg(frameBufferRef.current);
-                activeLegRef.current = leg;
-                calibPhaseRef.current = 'confirmed';
-                phaseStartRef.current = performance.now();
-                setActiveLeg(leg);
-                setCalibPhase('confirmed');
+
+              // Draw skeleton during calibration (no dimming, highlight lower body)
+              if (phase !== 'tracking' && phase !== 'confirmed') {
+                drawSkeleton(
+                  ctx,
+                  smoothed,
+                  canvas,
+                  [23, 24, 25, 26, 27, 28],
+                  0,
+                  exerciseType,
+                  'both',
+                  false,
+                );
               }
-            } else if (phase === 'confirmed') {
-              if (elapsed > 1000) {
-                calibPhaseRef.current = 'tracking';
-                setCalibPhase('tracking');
-              }
-            } else {
-              // ── Normal tracking ────────────────────────────────────────
-              const state = detect(
-                exerciseType,
-                smoothed,
-                activeLegRef.current,
-              );
-
-              trackerRef.current = updateRepCount(
-                trackerRef.current,
-                state,
-                exerciseType,
-              );
-
-              if (trackerRef.current.count > lastRepCount.current) {
-                lastRepCount.current = trackerRef.current.count;
-                onRepCounted(trackerRef.current.count);
-              }
-
-              onFormUpdate(avgFormScore(trackerRef.current));
-
-              // Debug logging every 30 frames — remove after verifying rep counting works
-              debugFrameRef.current++;
-              if (debugFrameRef.current % 30 === 0) {
-                console.log('[PoseCamera]', {
-                  angle: state.angle,
-                  repState: state.repState,
-                  count: trackerRef.current.count,
-                  formScore: state.formScore,
-                });
-              }
-
-              drawSkeleton(
-                ctx,
-                smoothed,
-                canvas,
-                EXERCISE_JOINTS[exerciseType] ?? [],
-                state.angle,
-                exerciseType,
-                activeLegRef.current,
-                true,
-              );
-
-              animFrameRef.current = requestAnimationFrame(detectFrame);
-              return;
             }
-
-            // Draw skeleton during calibration (no dimming, highlight lower body)
-            drawSkeleton(
-              ctx,
-              smoothed,
-              canvas,
-              [23, 24, 25, 26, 27, 28],
-              0,
-              exerciseType,
-              'both',
-              false,
-            );
+            animFrameRef.current = requestAnimationFrame(detectFrame);
+          } catch (err) {
+            console.error('[PoseCamera] Detection error:', err);
+            animFrameRef.current = requestAnimationFrame(detectFrame);
           }
-
-          animFrameRef.current = requestAnimationFrame(detectFrame);
         }
 
         animFrameRef.current = requestAnimationFrame(detectFrame);

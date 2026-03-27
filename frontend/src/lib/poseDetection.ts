@@ -18,6 +18,10 @@ export type ExerciseType =
 
 export type ActiveLeg = 'left' | 'right' | 'both';
 
+// Leg index sets (MediaPipe indices)
+export const LEFT_LEG_SET = new Set([23, 25, 27, 29, 31]);
+export const RIGHT_LEG_SET = new Set([24, 26, 28, 30, 32]);
+
 export interface ExerciseState {
   repState: 'up' | 'down' | 'hold';
   angle: number;
@@ -85,6 +89,16 @@ export const EXERCISE_JOINTS: Record<ExerciseType, number[]> = {
   single_leg_rdl: [11, 12, 23, 24, 25, 26],
   generic: [],
 };
+
+/** Get highlighted joints for an exercise, filtered by active leg if applicable. */
+export function getExerciseJoints(type: ExerciseType, activeLeg: ActiveLeg): number[] {
+  const joints = EXERCISE_JOINTS[type] ?? [];
+  if (activeLeg === 'both') return joints;
+  
+  const set = activeLeg === 'left' ? LEFT_LEG_SET : RIGHT_LEG_SET;
+  // Keep joints that belong to the active leg OR are neutral (torso: 11, 12, 23, 24, arms: 13-16)
+  return joints.filter(idx => set.has(idx) || [11, 12, 23, 24, 13, 14, 15, 16].includes(idx));
+}
 
 // ---------------------------------------------------------------------------
 // Singleton landmarker
