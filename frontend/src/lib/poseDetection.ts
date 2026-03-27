@@ -38,6 +38,7 @@ export interface RepState {
   formScore: number;
   formScores: number[];
   lastRepTime: number;
+  peakAngle: number;
 }
 
 // Leg index sets (MediaPipe indices) — used by PoseCamera for dimming
@@ -171,7 +172,21 @@ export function createRepState(): RepState {
     formScore: 0,
     formScores: [],
     lastRepTime: 0,
+    peakAngle: 0,
   };
+}
+
+function calculateRepFormScore(angle: number, detection: Detection): number {
+  const [goodMin, goodMax] = detection.form_good_range;
+  const [okMin, okMax] = detection.form_ok_range;
+
+  if (angle >= goodMin && angle <= goodMax) {
+    return 90 + Math.round(Math.random() * 10); // 90-100
+  }
+  if (angle >= okMin && angle <= okMax) {
+    return 65 + Math.round(Math.random() * 15); // 65-80
+  }
+  return 40 + Math.round(Math.random() * 15); // 40-55
 }
 
 export function processFrame(
@@ -201,39 +216,50 @@ export function processFrame(
 
   // State machine
   if (state.phase === 'resting' && isActive) {
-    // Moved from rest to active — score form at this point
+    // Moved from rest to active — start tracking peak angle
     updated.phase = 'active';
+    updated.peakAngle = angle;
 
-    const [goodMin, goodMax] = detection.form_good_range;
-    const [okMin, okMax] = detection.form_ok_range;
-
-    let repFormScore = 55; // default: poor but counts
+  } else if (state.phase === 'active') {
+    // Track the deepest angle reached during this rep
     if (goesDown) {
-      if (angle >= goodMin && angle <= goodMax) repFormScore = 95;
-      else if (angle >= okMin && angle <= okMax) repFormScore = 75;
+      updated.peakAngle = Math.min(state.peakAngle || 999, angle);
     } else {
-      if (angle >= goodMin && angle <= goodMax) repFormScore = 95;
-      else if (angle >= okMin && angle <= okMax) repFormScore = 75;
+      updated.peakAngle = Math.max(state.peakAngle || 0, angle);
     }
-    updated.formScore = repFormScore;
 
-  } else if (state.phase === 'active' && isResting) {
-    // Returned to rest from active — completed a rep
-    if (now - state.lastRepTime > 600) {
-      updated.count = state.count + 1;
-      updated.lastRepTime = now;
-      updated.formScores = [...state.formScores, state.formScore];
-      const allScores = updated.formScores;
-      updated.formScore = Math.round(
-        allScores.reduce((a, b) => a + b, 0) / allScores.length,
-      );
+    // Live form preview — real-time feedback as user moves
+    const liveScore = calculateRepFormScore(updated.peakAngle, detection);
+    if (state.formScores.length > 0) {
+      const pastAvg = state.formScores.reduce((a, b) => a + b, 0) / state.formScores.length;
+      updated.formScore = Math.round(pastAvg * 0.7 + liveScore * 0.3);
+    } else {
+      updated.formScore = liveScore;
     }
-    updated.phase = 'resting';
+
+    if (isResting) {
+      // Returned to rest from active — completed a rep
+      if (now - state.lastRepTime > 600) {
+        const thisRepScore = calculateRepFormScore(updated.peakAngle, detection);
+        updated.formScores = [...state.formScores, thisRepScore];
+        const allScores = updated.formScores;
+        updated.formScore = Math.round(
+          allScores.reduce((a, b) => a + b, 0) / allScores.length,
+        );
+        updated.count = state.count + 1;
+        updated.lastRepTime = now;
+      }
+      updated.phase = 'resting';
+      updated.peakAngle = 0;
+    }
 
   } else if (state.phase === 'between') {
     if (isResting) updated.phase = 'resting';
-    else if (isActive) updated.phase = 'active';
-  } else if (!isResting && !isActive && state.phase !== 'active') {
+    else if (isActive) {
+      updated.phase = 'active';
+      updated.peakAngle = angle;
+    }
+  } else if (state.phase === 'resting' && !isResting && !isActive) {
     updated.phase = 'between';
   }
 

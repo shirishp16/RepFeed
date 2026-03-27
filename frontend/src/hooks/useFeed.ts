@@ -292,10 +292,11 @@ export function useFeed(): UseFeedReturn {
         setRecalibToast(false);
 
         progressOffsetRef.current += 10;
+        const cycle = progressOffsetRef.current;
         const tail = buildFeedFromArrays(
-          newExCards,
+          newExCards.map((c: ExerciseCard) => ({ ...c, id: `${c.id}-r${cycle}` })),
           [],
-          progressOffsetRef.current,
+          cycle,
         );
         setCards((prev) => [...prev, ...tail]);
       }).catch(() => {

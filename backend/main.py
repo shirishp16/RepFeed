@@ -50,6 +50,69 @@ async def generate_feed(req: FeedRequest):
 Their preferences (0-1 scale): upperBody={prefs.upperBody}, lowerBody={prefs.lowerBody}, core={prefs.core}, balance={prefs.balance}, intensity={prefs.intensity}.
 Avoid repeating these already completed exercises: {completed}.
 
+IMPORTANT — How angle measurement works in our app:
+
+We use MediaPipe Pose which tracks 33 body landmarks. We measure angles between THREE joints where the MIDDLE joint is the vertex of the angle.
+
+How angles work:
+- A completely straight limb = approximately 170-180 degrees
+- A fully bent limb = approximately 30-60 degrees
+- The angle ALWAYS measures the interior angle at the middle joint
+
+Specific examples:
+- Joint triplet ["hip", "knee", "ankle"] measures the angle AT THE KNEE:
+  - Standing straight with legs straight: ~170-180°
+  - Deep squat (knees fully bent): ~50-70°
+  - Hamstring curl (foot kicked back toward glute while standing): knee angle goes from ~170° (straight) down to ~40-60° (fully curled)
+
+- Joint triplet ["shoulder", "elbow", "wrist"] measures the angle AT THE ELBOW:
+  - Arm fully extended straight: ~160-180°
+  - Arm fully bent (bicep curl peak): ~30-50°
+  - Wall push-up (arms bending): goes from ~160° (arms straight) down to ~70-90° (arms bent against wall)
+
+- Joint triplet ["shoulder", "hip", "knee"] measures the angle AT THE HIP:
+  - Standing straight: ~170-180°
+  - Leg raised forward (hip flexion): ~90-120°
+
+Key rules for setting thresholds:
+- rest_angle is ALWAYS the angle when the person is standing still doing nothing. For legs this is ~170-180. For straight arms this is ~160-180.
+- active_angle is ALWAYS the angle at the PEAK of the exercise movement. This is always LESS than rest_angle for most exercises (because joints bend = angle decreases).
+- form_good_range should be centered around the ideal active_angle with ±15 degrees tolerance
+- form_ok_range should be wider, ±30 degrees tolerance
+- ALWAYS make ranges generous. It is better to count a rep that wasn't perfect than to miss a rep that was.
+
+DO NOT set rest_angle lower than active_angle unless the exercise specifically involves extending/straightening from a bent position. For 95% of exercises, rest_angle > active_angle because you start straight and bend.
+
+Here are example detection objects for common exercises:
+
+Standing Hamstring Curl (bending knee behind body):
+{{"primary_joints": ["hip", "knee", "ankle"], "side": "single", "rest_angle": 175, "active_angle": 60, "form_good_range": [45, 75], "form_ok_range": [75, 110]}}
+
+Bodyweight Squat (both legs bending together):
+{{"primary_joints": ["hip", "knee", "ankle"], "side": "both", "rest_angle": 175, "active_angle": 80, "form_good_range": [65, 95], "form_ok_range": [95, 130]}}
+
+Wall Push-Up (arms bending against wall):
+{{"primary_joints": ["shoulder", "elbow", "wrist"], "side": "both", "rest_angle": 165, "active_angle": 80, "form_good_range": [65, 95], "form_ok_range": [95, 130]}}
+
+Standing Calf Raise (rising on toes):
+{{"primary_joints": ["hip", "knee", "ankle"], "side": "both", "rest_angle": 175, "active_angle": 155, "form_good_range": [145, 160], "form_ok_range": [135, 170]}}
+
+CRITICAL: ALL exercises MUST be specifically for rehabilitating the user's condition: {req.condition}
+
+- If the condition involves the KNEE or LEG (ACL, knee surgery, ankle sprain):
+  ALL exercises must target lower body. Do NOT include any arm or shoulder exercises.
+  Use joint triplet ["hip", "knee", "ankle"] for all canTryIt exercises.
+
+- If the condition involves the SHOULDER or ARM (rotator cuff, wrist, carpal tunnel):
+  ALL exercises must target upper body. Do NOT include any leg exercises.
+  Use joint triplet ["shoulder", "elbow", "wrist"] for all canTryIt exercises.
+
+- If the condition involves the BACK (lower back pain):
+  Include a mix of standing core stability and hip hinge exercises.
+  Use joint triplet ["shoulder", "hip", "knee"] for hip hinge exercises.
+
+Do NOT mix body regions. A knee rehab patient should NEVER see bicep curls. A shoulder rehab patient should NEVER see squats.
+
 Return a JSON array of 8 objects. Every exercise must be standing (no floor work, no equipment).
 Each object must have exactly these fields:
 - id: unique string (e.g. "ex_001")
@@ -64,15 +127,12 @@ Each object must have exactly these fields:
 - safetyNote: string (one short safety tip)
 - canTryIt: boolean (true if the exercise involves a clear repetitive motion that a front-facing camera can track — squats, curls, raises, lunges, knee flexion, hip hinges, etc. Set false for isometric holds, balance exercises, or movements that are hard to track from the front.)
 - detection: object or null. Required when canTryIt is true. When canTryIt is false, set to null. The detection object tells the app how to count reps via camera pose tracking. Fields:
-  - primary_joints: array of exactly 3 strings naming body points that form the angle being measured. Options: "shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "foot". Examples: ["hip", "knee", "ankle"] for squats/lunges (knee bend), ["knee", "ankle", "heel"] for calf raises (ankle plantarflexion), ["shoulder", "elbow", "wrist"] for bicep curls.
-  - side: one of "left", "right", "both". Use "both" for squats/lunges, "left" or "right" for single-leg exercises.
-  - rest_angle: number — approximate angle (degrees) when standing/resting (the starting position). Example: 170 for a straight leg.
-  - active_angle: number — approximate angle at the peak of the exercise movement. Example: 90 for a deep squat.
-  - form_good_range: [number, number] — [min, max] angle range at the peak that indicates good form. Example: [80, 100] for squats.
-  - form_ok_range: [number, number] — [min, max] wider range that indicates acceptable but not great form. Example: [100, 130] for squats.
-
-A rep counts when the angle travels from near rest_angle to near active_angle and back.
-Make the ranges GENEROUS. A rep should count even if the user only gets 70% of the way to the active_angle. For example, if active_angle is 90, count a rep if they reach 120.
+  - primary_joints: array of exactly 3 strings naming body points that form the angle being measured. Options: "shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "foot".
+  - side: one of "left", "right", "both". Use "both" for bilateral exercises, "left" or "right" for single-side exercises.
+  - rest_angle: number — angle when standing still (see examples above).
+  - active_angle: number — angle at peak of movement (see examples above).
+  - form_good_range: [number, number] — tight range around ideal active angle.
+  - form_ok_range: [number, number] — wider acceptable range.
 
 At least 4-5 of the 8 exercises should have canTryIt: true with detection."""
 
