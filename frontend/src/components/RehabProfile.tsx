@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Brain } from 'lucide-react';
 
@@ -56,11 +56,22 @@ export default function RehabProfile({
   const cy = 110;
   const r = 80;
 
-  const insights = [
-    'Lower body focus detected',
-    'Moderate intensity preference',
-    'Balance training needed',
-  ];
+  const insights = useMemo(() => {
+    const result: string[] = [];
+    const { lowerBody, upperBody, core, balance, intensity } = preferenceVector;
+    if (lowerBody >= 0.7) result.push('Lower body focus detected');
+    else if (lowerBody <= 0.3) result.push('Lower body needs attention');
+    if (upperBody >= 0.7) result.push('Upper body emphasis');
+    else if (upperBody <= 0.3) result.push('Upper body needs work');
+    if (core >= 0.6) result.push('Core strengthening emphasis');
+    else if (core <= 0.3) result.push('Core training needed');
+    if (balance <= 0.4) result.push('Balance training needed');
+    else if (balance >= 0.7) result.push('Strong balance profile');
+    if (intensity >= 0.7) result.push('High intensity preference');
+    else if (intensity <= 0.3) result.push('Low intensity preference');
+    else result.push('Moderate intensity preference');
+    return result.slice(0, 3);
+  }, [preferenceVector]);
 
   return (
     <div className="fixed bottom-20 right-4 z-40">

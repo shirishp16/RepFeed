@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface OnboardingFlowProps {
-  onComplete: () => void;
+  onComplete: (data: { condition: string; phase: string }) => void;
 }
 
 const conditions = [
@@ -323,7 +323,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   <motion.button
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    onClick={onComplete}
+                    onClick={() => onComplete({
+                      condition: selectedCondition === 'other' ? otherText || 'General' : selectedCondition || 'ACL',
+                      phase: phases.find(p => p.id === selectedPhase)?.label || 'Building Strength',
+                    })}
                     className="relative w-full h-14 rounded-xl bg-accent text-white font-outfit font-bold text-base overflow-hidden"
                   >
                     <span className="relative z-10">Start Scrolling →</span>

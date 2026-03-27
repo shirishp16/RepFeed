@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import type { FeedCard } from '@/data/mockData';
 import ExerciseCard from './ExerciseCard';
 import KnowledgeCard from './KnowledgeCard';
@@ -38,6 +38,7 @@ export default function FeedContainer({
 }: FeedContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [ready, setReady] = useState(false);
 
   const setCardRef = useCallback(
     (index: number) => (el: HTMLDivElement | null) => {
@@ -46,7 +47,25 @@ export default function FeedContainer({
     [],
   );
 
+  // Reset scroll to top on mount and when cards change
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container || cards.length === 0) return;
+
+    // Immediately scroll to top
+    container.scrollTo({ top: 0, behavior: 'instant' });
+
+    // Delay observer setup so DOM settles at position 0
+    const timer = setTimeout(() => {
+      setReady(true);
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [cards]);
+
+  // Set up IntersectionObserver after scroll reset
+  useEffect(() => {
+    if (!ready) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -74,7 +93,7 @@ export default function FeedContainer({
     });
 
     return () => observer.disconnect();
-  }, [cards, onCardVisible]);
+  }, [ready, cards, onCardVisible]);
 
   return (
     <div
