@@ -68,6 +68,31 @@ function detect(
 }
 
 // ---------------------------------------------------------------------------
+// Landmark smoothing
+// ---------------------------------------------------------------------------
+
+const SMOOTH_FRAMES = 5;
+
+function smoothLandmarks(
+  raw: NormalizedLandmark[],
+  bufferRef: { current: NormalizedLandmark[][] },
+): NormalizedLandmark[] {
+  bufferRef.current.push(raw);
+  if (bufferRef.current.length > SMOOTH_FRAMES) bufferRef.current.shift();
+  const n = bufferRef.current.length;
+  return raw.map((_, idx) => {
+    let sx = 0, sy = 0, sz = 0, sv = 0;
+    for (const frame of bufferRef.current) {
+      sx += frame[idx].x;
+      sy += frame[idx].y;
+      sz += frame[idx].z ?? 0;
+      sv += frame[idx].visibility ?? 0;
+    }
+    return { x: sx / n, y: sy / n, z: sz / n, visibility: sv / n };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Visibility helpers
 // ---------------------------------------------------------------------------
 
@@ -212,6 +237,9 @@ export default function PoseCamera({
   const streamRef = useRef<MediaStream | null>(null);
   const lastRepCount = useRef(0);
 
+  // Smoothing buffer ref
+  const landmarkBufferRef = useRef<NormalizedLandmark[][]>([]);
+
   // Calibration refs — updated synchronously in the animation loop
   const calibPhaseRef = useRef<CalibrationPhase>('stand_back');
   const activeLegRef = useRef<ActiveLeg>('both');
@@ -240,6 +268,7 @@ export default function PoseCamera({
     calibPhaseRef.current = 'stand_back';
     activeLegRef.current = 'both';
     frameBufferRef.current = [];
+    landmarkBufferRef.current = [];
   }, []);
 
   const switchLeg = useCallback(() => {
@@ -303,19 +332,20 @@ export default function PoseCamera({
           const landmarks = results.landmarks?.[0];
 
           if (landmarks) {
+            const smoothed = smoothLandmarks(landmarks, landmarkBufferRef);
             const phase = calibPhaseRef.current;
             const elapsed = performance.now() - phaseStartRef.current;
 
             // ── Calibration phase transitions ──────────────────────────────
             if (phase === 'stand_back') {
-              if (elapsed > 2000 || lowerBodyVisible(landmarks)) {
+              if (elapsed > 2000 || lowerBodyVisible(smoothed)) {
                 calibPhaseRef.current = 'detecting';
                 phaseStartRef.current = performance.now();
                 frameBufferRef.current = [];
                 setCalibPhase('detecting');
               }
             } else if (phase === 'detecting') {
-              frameBufferRef.current.push(landmarks);
+              frameBufferRef.current.push(smoothed);
               if (elapsed > 1500) {
                 const leg = detectActiveLeg(frameBufferRef.current);
                 activeLegRef.current = leg;
@@ -333,7 +363,7 @@ export default function PoseCamera({
               // ── Normal tracking ────────────────────────────────────────
               const state = detect(
                 exerciseType,
-                landmarks,
+                smoothed,
                 activeLegRef.current,
               );
 
@@ -352,7 +382,7 @@ export default function PoseCamera({
 
               drawSkeleton(
                 ctx,
-                landmarks,
+                smoothed,
                 canvas,
                 EXERCISE_JOINTS[exerciseType] ?? [],
                 state.angle,
@@ -368,7 +398,7 @@ export default function PoseCamera({
             // Draw skeleton during calibration (no dimming, highlight lower body)
             drawSkeleton(
               ctx,
-              landmarks,
+              smoothed,
               canvas,
               [23, 24, 25, 26, 27, 28],
               0,
