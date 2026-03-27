@@ -96,6 +96,7 @@ function drawSkeleton(
   for (const [startIdx, endIdx] of POSE_CONNECTIONS) {
     const start = mirrored[startIdx];
     const end = mirrored[endIdx];
+    if (!start || !end) continue;
     if ((start.visibility ?? 0) <= 0.5 || (end.visibility ?? 0) <= 0.5) continue;
 
     const dimmed = isInactive(startIdx) && isInactive(endIdx);
@@ -147,7 +148,7 @@ function drawSkeleton(
   // Draw angle near the vertex joint
   if (angleJointIdx != null && angle > 0) {
     const joint = mirrored[angleJointIdx];
-    if ((joint.visibility ?? 0) > 0.5) {
+    if (joint && (joint.visibility ?? 0) > 0.5) {
       const jx = joint.x * canvas.width + 20;
       const jy = joint.y * canvas.height;
       ctx.font = 'bold 18px JetBrains Mono, monospace';
@@ -213,6 +214,16 @@ export default function PoseCamera({
   const frameBufferRef = useRef<NormalizedLandmark[][]>([]);
   const phaseStartRef = useRef<number>(0);
 
+  // Stable refs for props that change without needing effect restart
+  const detectionRef = useRef(detection);
+  const onRepCountedRef = useRef(onRepCounted);
+  const onFormUpdateRef = useRef(onFormUpdate);
+
+  // Keep refs in sync with latest props (no effect re-triggers)
+  detectionRef.current = detection;
+  onRepCountedRef.current = onRepCounted;
+  onFormUpdateRef.current = onFormUpdate;
+
   // UI state — drives re-renders
   const [calibPhase, setCalibPhase] = useState<CalibrationPhase>('stand_back');
   const [activeLeg, setActiveLeg] = useState<ActiveLeg>('both');
@@ -220,9 +231,6 @@ export default function PoseCamera({
   const [loading, setLoading] = useState(true);
 
   const isSingleLeg = detection.side === 'single_leg';
-
-  // Precompute joint data from detection
-  const highlightedJoints = getJointsFromDetection(detection);
 
   const cleanup = useCallback(() => {
     if (animFrameRef.current) {
@@ -249,6 +257,7 @@ export default function PoseCamera({
     setActiveLeg(next);
     trackerRef.current = createRepTracker();
     lastRepCount.current = 0;
+    landmarkBufferRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -282,6 +291,16 @@ export default function PoseCamera({
 
         const video = videoRef.current!;
         video.srcObject = stream;
+
+        // Wait for video metadata so dimensions are available
+        await new Promise<void>((resolve) => {
+          if (video.readyState >= 1) {
+            resolve();
+          } else {
+            video.addEventListener('loadedmetadata', () => resolve(), { once: true });
+          }
+        });
+
         await video.play();
 
         const pose = await initPoseLandmarker();
@@ -306,6 +325,10 @@ export default function PoseCamera({
               const smoothed = smoothLandmarks(landmarks, landmarkBufferRef);
               const phase = calibPhaseRef.current;
               const elapsed = performance.now() - phaseStartRef.current;
+
+              // Read current detection from ref (stable across renders)
+              const det = detectionRef.current;
+              const joints = getJointsFromDetection(det);
 
               // ── Calibration phase transitions ──────────────────────────────
               if (phase === 'stand_back') {
@@ -334,9 +357,9 @@ export default function PoseCamera({
                     ctx,
                     smoothed,
                     canvas,
-                    highlightedJoints,
+                    joints,
                     0,
-                    getVertexJointIdx(detection, activeLegRef.current),
+                    getVertexJointIdx(det, activeLegRef.current),
                     activeLegRef.current,
                     true,
                   );
@@ -347,7 +370,7 @@ export default function PoseCamera({
                 // ── Normal tracking ────────────────────────────────────────
                 const state = detectGeneric(
                   smoothed,
-                  detection,
+                  det,
                   activeLegRef.current,
                 );
 
@@ -358,10 +381,10 @@ export default function PoseCamera({
 
                 if (trackerRef.current.count > lastRepCount.current) {
                   lastRepCount.current = trackerRef.current.count;
-                  onRepCounted(trackerRef.current.count);
+                  onRepCountedRef.current(trackerRef.current.count);
                 }
 
-                onFormUpdate(avgFormScore(trackerRef.current));
+                onFormUpdateRef.current(avgFormScore(trackerRef.current));
 
                 // Debug logging every 30 frames
                 debugFrameRef.current++;
@@ -378,9 +401,9 @@ export default function PoseCamera({
                   ctx,
                   smoothed,
                   canvas,
-                  highlightedJoints,
+                  joints,
                   state.angle,
-                  getVertexJointIdx(detection, activeLegRef.current),
+                  getVertexJointIdx(det, activeLegRef.current),
                   activeLegRef.current,
                   true,
                 );
@@ -399,6 +422,9 @@ export default function PoseCamera({
                   false,
                 );
               }
+            } else {
+              // No landmarks detected — clear stale skeleton
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
             animFrameRef.current = requestAnimationFrame(detectFrame);
           } catch (err) {
@@ -426,7 +452,7 @@ export default function PoseCamera({
       cancelled = true;
       cleanup();
     };
-  }, [isActive, detection, isSingleLeg, highlightedJoints, onRepCounted, onFormUpdate, cleanup]);
+  }, [isActive, isSingleLeg, cleanup]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render

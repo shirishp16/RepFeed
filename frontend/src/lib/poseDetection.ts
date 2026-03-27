@@ -115,6 +115,12 @@ export const POSE_CONNECTIONS: [number, number][] = [
   // Right leg
   [24, 26],
   [26, 28],
+  // Left foot
+  [27, 29],
+  [29, 31],
+  // Right foot
+  [28, 30],
+  [30, 32],
 ];
 
 // ---------------------------------------------------------------------------
@@ -246,6 +252,17 @@ export function detectGeneric(
 // Form score calculation
 // ---------------------------------------------------------------------------
 
+/** Fuzzy-map LLM-generated check names to known form check types. */
+function normalizeCheckName(name: string): string {
+  const n = name.toLowerCase().replace(/[^a-z]/g, '_');
+  if (n.includes('upright') || n.includes('torso')) return 'upper_body_upright';
+  if (n.includes('knee') && n.includes('toe')) return 'knees_over_toes';
+  if (n.includes('back') && n.includes('straight')) return 'back_straight';
+  if (n.includes('knee') && n.includes('straight')) return 'knee_straight';
+  if (n.includes('hip') && (n.includes('stable') || n.includes('level'))) return 'hip_stable';
+  return name;
+}
+
 function calculateFormScore(
   landmarks: NormalizedLandmark[],
   detection: ExerciseDetection,
@@ -253,7 +270,7 @@ function calculateFormScore(
   let score = 100;
 
   for (const check of detection.form_checks) {
-    switch (check.check) {
+    switch (normalizeCheckName(check.check)) {
       case 'upper_body_upright': {
         const shoulder = landmarks[11]; // left shoulder
         const hip = landmarks[23]; // left hip
