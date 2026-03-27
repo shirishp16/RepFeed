@@ -6,7 +6,7 @@ import {
   type ExerciseCard,
   type KnowledgeCard,
 } from '@/data/mockData';
-import type { ExerciseDetection } from '@/lib/poseDetection';
+import type { Detection } from '@/lib/poseDetection';
 import { updatePreferences } from '@/lib/behavioralEngine';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -66,8 +66,7 @@ function toExerciseCard(raw: Record<string, unknown>, idx: number): ExerciseCard
     muscleGroups: (raw.muscleGroups as string[]) ?? [],
     safetyNote: (raw.safetyNote as string) || undefined,
     canTryIt: Boolean(raw.canTryIt),
-    exerciseType: (raw.exerciseType as ExerciseCard['exerciseType']) ?? undefined,
-    detection: (raw.detection as ExerciseDetection) ?? null,
+    detection: (raw.detection as Detection) ?? null,
   };
 }
 
@@ -378,7 +377,9 @@ export function useFeed(): UseFeedReturn {
 
   const onCompleteTryIt = useCallback(
     (data: { reps: number; formScore: number }) => {
-      setXp((prev) => prev + 50);
+      // XP based on reps x form quality
+      const xpEarned = Math.max(10, Math.round(data.reps * (Math.max(data.formScore, 50) / 100) * 10));
+      setXp((prev) => prev + xpEarned);
       setExercisesCompleted((prev) => prev + 1);
       setTotalReps((prev) => prev + data.reps);
       if (data.formScore > 0) {

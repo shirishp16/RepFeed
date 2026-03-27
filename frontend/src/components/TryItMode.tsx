@@ -50,7 +50,8 @@ export default function TryItMode({
   const [countdown, setCountdown] = useState(3);
 
   const targetReps = exercise?.reps ?? 5;
-  const showComplete = reps >= Math.min(targetReps, 5);
+  const hasDetection = exercise?.detection != null;
+  const showComplete = !hasDetection || reps >= Math.min(targetReps, 5);
 
   useEffect(() => {
     if (!active) {
@@ -231,14 +232,23 @@ export default function TryItMode({
             )}
 
             {/* Live camera */}
-            {cameraPhase === 'tracking' && exercise.detection && (
+            {cameraPhase === 'tracking' && exercise.detection ? (
               <PoseCamera
                 detection={exercise.detection}
                 onRepCounted={handleRepCounted}
                 onFormUpdate={handleFormUpdate}
                 isActive={true}
               />
-            )}
+            ) : cameraPhase === 'tracking' && !exercise.detection ? (
+              <div className="flex flex-col items-center gap-4 px-6">
+                <p className="font-outfit text-base font-bold text-text-primary text-center">
+                  Guided Form Only
+                </p>
+                <p className="font-outfit text-sm text-text-secondary text-center">
+                  This exercise uses guided form. Perform the exercise and tap Complete when done.
+                </p>
+              </div>
+            ) : null}
 
             {/* Fallback demo */}
             {cameraPhase === 'fallback' && (

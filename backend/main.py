@@ -64,16 +64,17 @@ Each object must have exactly these fields:
 - safetyNote: string (one short safety tip)
 - canTryIt: boolean (true if the exercise involves a clear repetitive motion that a front-facing camera can track — squats, curls, raises, lunges, knee flexion, hip hinges, etc. Set false for isometric holds, balance exercises, or movements that are hard to track from the front.)
 - detection: object or null. Required when canTryIt is true. When canTryIt is false, set to null. The detection object tells the app how to count reps via camera pose tracking. Fields:
-  - joint_triplet: array of exactly 3 strings naming body points that form the angle being measured. Options: "shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "foot". Examples: ["hip", "knee", "ankle"] for squats/lunges (knee bend), ["knee", "ankle", "heel"] for calf raises (ankle plantarflexion), ["shoulder", "elbow", "wrist"] for bicep curls.
-  - side: one of "single_leg", "both_legs", "single_arm". Use "both_legs" for squats/lunges, "single_leg" for single-leg curls/raises.
-  - start_angle_min: number — minimum angle (degrees) at the resting/start position. Example: 155 for standing straight.
-  - start_angle_max: number — maximum angle at rest. Example: 180.
-  - end_angle_min: number — minimum angle at the peak of the movement. Example: 60 for a deep squat.
-  - end_angle_max: number — maximum angle at the peak. Example: 130 for a shallow squat.
-  - rep_direction: "high_to_low" if the angle decreases during the exercise (squats, knee flexion), "low_to_high" if it increases.
-  - form_checks: array of objects, each with: "check" (string, one of: "upper_body_upright", "knees_over_toes", "back_straight", "knee_straight", "hip_stable"), "description" (string, short tip for the user), "penalty" (number, points deducted from 100 for bad form, typically 10-20). Use "upper_body_upright" for squats/lunges, "knees_over_toes" for squats, "back_straight" for hinges, "knee_straight" for straight-leg exercises like calf raises, "hip_stable" for single-leg exercises.
+  - primary_joints: array of exactly 3 strings naming body points that form the angle being measured. Options: "shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "foot". Examples: ["hip", "knee", "ankle"] for squats/lunges (knee bend), ["knee", "ankle", "heel"] for calf raises (ankle plantarflexion), ["shoulder", "elbow", "wrist"] for bicep curls.
+  - side: one of "left", "right", "both". Use "both" for squats/lunges, "left" or "right" for single-leg exercises.
+  - rest_angle: number — approximate angle (degrees) when standing/resting (the starting position). Example: 170 for a straight leg.
+  - active_angle: number — approximate angle at the peak of the exercise movement. Example: 90 for a deep squat.
+  - form_good_range: [number, number] — [min, max] angle range at the peak that indicates good form. Example: [80, 100] for squats.
+  - form_ok_range: [number, number] — [min, max] wider range that indicates acceptable but not great form. Example: [100, 130] for squats.
 
-IMPORTANT: Use WIDE, GENEROUS angle ranges so reps are easy to count. A rep should register even if the user only KIND OF completes the movement. For example, a standing knee flexion: start 155-180, end 60-130 (not a strict 90 target). At least 4-5 of the 8 exercises should have canTryIt: true with detection."""
+A rep counts when the angle travels from near rest_angle to near active_angle and back.
+Make the ranges GENEROUS. A rep should count even if the user only gets 70% of the way to the active_angle. For example, if active_angle is 90, count a rep if they reach 120.
+
+At least 4-5 of the 8 exercises should have canTryIt: true with detection."""
 
     try:
         response = client.chat.completions.create(

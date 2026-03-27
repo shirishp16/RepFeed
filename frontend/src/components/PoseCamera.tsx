@@ -5,29 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import {
   initPoseLandmarker,
-  detectGeneric,
-  detectActiveLeg,
-  updateRepCount,
-  createRepTracker,
-  avgFormScore,
+  processFrame,
+  createRepState,
   POSE_CONNECTIONS,
   LEFT_LEG_SET,
   RIGHT_LEG_SET,
-  getJointsFromDetection,
-  getVertexJointIdx,
-  type ExerciseDetection,
-  type ActiveLeg,
-  type RepTracker,
+  getHighlightedJoints,
+  getVertexIdx,
+  type Detection,
+  type RepState,
 } from '@/lib/poseDetection';
 
 // ---------------------------------------------------------------------------
-// Types & constants
+// Types
 // ---------------------------------------------------------------------------
 
-type CalibrationPhase = 'stand_back' | 'detecting' | 'confirmed' | 'tracking';
-
 interface PoseCameraProps {
-  detection: ExerciseDetection;
+  detection: Detection;
   onRepCounted: (newCount: number) => void;
   onFormUpdate: (score: number) => void;
   isActive: boolean;
@@ -59,16 +53,6 @@ function smoothLandmarks(
 }
 
 // ---------------------------------------------------------------------------
-// Visibility helpers
-// ---------------------------------------------------------------------------
-
-function lowerBodyVisible(landmarks: NormalizedLandmark[]): boolean {
-  return [23, 24, 25, 26, 27, 28].every(
-    (i) => (landmarks[i]?.visibility ?? 0) > 0.5,
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Skeleton drawing
 // ---------------------------------------------------------------------------
 
@@ -79,8 +63,7 @@ function drawSkeleton(
   highlightedJoints: number[],
   angle: number,
   angleJointIdx: number | null,
-  activeLeg: ActiveLeg,
-  isTracking: boolean,
+  activeSide: 'left' | 'right' | 'both',
 ) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -88,8 +71,8 @@ function drawSkeleton(
   const mirrored = landmarks.map((l) => ({ ...l, x: 1 - l.x }));
 
   const isInactive = (idx: number) => {
-    if (!isTracking || activeLeg === 'both') return false;
-    return activeLeg === 'left' ? RIGHT_LEG_SET.has(idx) : LEFT_LEG_SET.has(idx);
+    if (activeSide === 'both') return false;
+    return activeSide === 'left' ? RIGHT_LEG_SET.has(idx) : LEFT_LEG_SET.has(idx);
   };
 
   // Draw connections
@@ -145,7 +128,7 @@ function drawSkeleton(
     ctx.fill();
   }
 
-  // Draw angle near the vertex joint
+  // Draw angle near the vertex joint (middle of the triplet)
   if (angleJointIdx != null && angle > 0) {
     const joint = mirrored[angleJointIdx];
     if (joint && (joint.visibility ?? 0) > 0.5) {
@@ -200,37 +183,32 @@ export default function PoseCamera({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
-  const trackerRef = useRef<RepTracker>(createRepTracker());
+  const repStateRef = useRef<RepState>(createRepState());
   const streamRef = useRef<MediaStream | null>(null);
   const lastRepCount = useRef(0);
-  const debugFrameRef = useRef(0);
+  const frameCountRef = useRef(0);
 
-  // Smoothing buffer ref
+  // Smoothing buffer
   const landmarkBufferRef = useRef<NormalizedLandmark[][]>([]);
 
-  // Calibration refs — updated synchronously in the animation loop
-  const calibPhaseRef = useRef<CalibrationPhase>('stand_back');
-  const activeLegRef = useRef<ActiveLeg>('both');
-  const frameBufferRef = useRef<NormalizedLandmark[][]>([]);
-  const phaseStartRef = useRef<number>(0);
-
-  // Stable refs for props that change without needing effect restart
+  // Stable refs for props (avoid useEffect re-triggers)
   const detectionRef = useRef(detection);
   const onRepCountedRef = useRef(onRepCounted);
   const onFormUpdateRef = useRef(onFormUpdate);
-
-  // Keep refs in sync with latest props (no effect re-triggers)
   detectionRef.current = detection;
   onRepCountedRef.current = onRepCounted;
   onFormUpdateRef.current = onFormUpdate;
 
-  // UI state — drives re-renders
-  const [calibPhase, setCalibPhase] = useState<CalibrationPhase>('stand_back');
-  const [activeLeg, setActiveLeg] = useState<ActiveLeg>('both');
+  // Active side for single-side exercises
+  const activeSideRef = useRef<'left' | 'right'>('left');
+  const [activeSide, setActiveSide] = useState<'left' | 'right'>('left');
+
+  // UI state
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
 
-  const isSingleLeg = detection.side === 'single_leg';
+  const isSingleSide = detection.side !== 'both';
 
   const cleanup = useCallback(() => {
     if (animFrameRef.current) {
@@ -241,21 +219,17 @@ export default function PoseCamera({
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    trackerRef.current = createRepTracker();
+    repStateRef.current = createRepState();
     lastRepCount.current = 0;
-    calibPhaseRef.current = 'stand_back';
-    activeLegRef.current = 'both';
-    frameBufferRef.current = [];
     landmarkBufferRef.current = [];
-    debugFrameRef.current = 0;
+    frameCountRef.current = 0;
   }, []);
 
-  const switchLeg = useCallback(() => {
-    const next: ActiveLeg =
-      activeLegRef.current === 'left' ? 'right' : 'left';
-    activeLegRef.current = next;
-    setActiveLeg(next);
-    trackerRef.current = createRepTracker();
+  const switchSide = useCallback(() => {
+    const next = activeSideRef.current === 'left' ? 'right' as const : 'left' as const;
+    activeSideRef.current = next;
+    setActiveSide(next);
+    repStateRef.current = createRepState();
     lastRepCount.current = 0;
     landmarkBufferRef.current = [];
   }, []);
@@ -263,20 +237,12 @@ export default function PoseCamera({
   useEffect(() => {
     if (!isActive) {
       cleanup();
-      setCalibPhase('stand_back');
-      setActiveLeg('both');
       setLoading(true);
+      setReady(false);
       return;
     }
 
     let cancelled = false;
-
-    // Single-leg exercises run calibration; two-leg skip to tracking
-    const initialPhase: CalibrationPhase = isSingleLeg ? 'stand_back' : 'tracking';
-    calibPhaseRef.current = initialPhase;
-    activeLegRef.current = 'both';
-    phaseStartRef.current = performance.now();
-    setCalibPhase(initialPhase);
 
     async function start() {
       try {
@@ -294,11 +260,8 @@ export default function PoseCamera({
 
         // Wait for video metadata so dimensions are available
         await new Promise<void>((resolve) => {
-          if (video.readyState >= 1) {
-            resolve();
-          } else {
-            video.addEventListener('loadedmetadata', () => resolve(), { once: true });
-          }
+          if (video.readyState >= 1) resolve();
+          else video.addEventListener('loadedmetadata', () => resolve(), { once: true });
         });
 
         await video.play();
@@ -307,125 +270,88 @@ export default function PoseCamera({
         if (cancelled) return;
 
         setLoading(false);
-        phaseStartRef.current = performance.now();
 
         const canvas = canvasRef.current!;
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d')!;
 
+        // Short delay then mark ready (let user see themselves first)
+        setTimeout(() => {
+          if (!cancelled) setReady(true);
+        }, 500);
+
         function detectFrame() {
           if (cancelled || !pose) return;
 
           try {
+            frameCountRef.current++;
+
+            // Throttle: only run detection every other frame to reduce load
+            if (frameCountRef.current % 2 !== 0) {
+              animFrameRef.current = requestAnimationFrame(detectFrame);
+              return;
+            }
+
+            // Don't call detectForVideo until video is actually playing
+            if (video.readyState < 2) {
+              animFrameRef.current = requestAnimationFrame(detectFrame);
+              return;
+            }
+
             const results = pose.detectForVideo(video, performance.now());
             const landmarks = results.landmarks?.[0];
 
             if (landmarks) {
               const smoothed = smoothLandmarks(landmarks, landmarkBufferRef);
-              const phase = calibPhaseRef.current;
-              const elapsed = performance.now() - phaseStartRef.current;
-
-              // Read current detection from ref (stable across renders)
               const det = detectionRef.current;
-              const joints = getJointsFromDetection(det);
+              const side = activeSideRef.current;
 
-              // ── Calibration phase transitions ──────────────────────────────
-              if (phase === 'stand_back') {
-                if (elapsed > 2000 || lowerBodyVisible(smoothed)) {
-                  calibPhaseRef.current = 'detecting';
-                  phaseStartRef.current = performance.now();
-                  frameBufferRef.current = [];
-                  setCalibPhase('detecting');
-                }
-              } else if (phase === 'detecting') {
-                frameBufferRef.current.push(smoothed);
-                if (elapsed > 1500) {
-                  const leg = detectActiveLeg(frameBufferRef.current);
-                  activeLegRef.current = leg;
-                  calibPhaseRef.current = 'confirmed';
-                  phaseStartRef.current = performance.now();
-                  setActiveLeg(leg);
-                  setCalibPhase('confirmed');
-                }
-              } else if (phase === 'confirmed') {
-                if (elapsed > 1000) {
-                  calibPhaseRef.current = 'tracking';
-                  setCalibPhase('tracking');
-                } else {
-                  drawSkeleton(
-                    ctx,
-                    smoothed,
-                    canvas,
-                    joints,
-                    0,
-                    getVertexJointIdx(det, activeLegRef.current),
-                    activeLegRef.current,
-                    true,
-                  );
-                  animFrameRef.current = requestAnimationFrame(detectFrame);
-                  return;
-                }
-              } else {
-                // ── Normal tracking ────────────────────────────────────────
-                const state = detectGeneric(
-                  smoothed,
-                  det,
-                  activeLegRef.current,
-                );
+              // Process rep state
+              repStateRef.current = processFrame(
+                smoothed,
+                det,
+                side,
+                repStateRef.current,
+              );
 
-                trackerRef.current = updateRepCount(
-                  trackerRef.current,
-                  state,
-                );
-
-                if (trackerRef.current.count > lastRepCount.current) {
-                  lastRepCount.current = trackerRef.current.count;
-                  onRepCountedRef.current(trackerRef.current.count);
-                }
-
-                onFormUpdateRef.current(avgFormScore(trackerRef.current));
-
-                // Debug logging every 30 frames
-                debugFrameRef.current++;
-                if (debugFrameRef.current % 30 === 0) {
-                  console.log('[PoseCamera]', {
-                    angle: state.angle,
-                    repState: state.repState,
-                    count: trackerRef.current.count,
-                    formScore: state.formScore,
-                  });
-                }
-
-                drawSkeleton(
-                  ctx,
-                  smoothed,
-                  canvas,
-                  joints,
-                  state.angle,
-                  getVertexJointIdx(det, activeLegRef.current),
-                  activeLegRef.current,
-                  true,
-                );
+              // Notify parent of rep count changes
+              if (repStateRef.current.count > lastRepCount.current) {
+                lastRepCount.current = repStateRef.current.count;
+                onRepCountedRef.current(repStateRef.current.count);
               }
 
-              // Draw skeleton during calibration (no dimming, highlight lower body)
-              if (phase !== 'tracking' && phase !== 'confirmed') {
-                drawSkeleton(
-                  ctx,
-                  smoothed,
-                  canvas,
-                  [23, 24, 25, 26, 27, 28],
-                  0,
-                  null,
-                  'both',
-                  false,
-                );
+              // Throttle form updates to every 10 frames
+              if (frameCountRef.current % 10 === 0) {
+                onFormUpdateRef.current(repStateRef.current.formScore);
               }
-            } else {
-              // No landmarks detected — clear stale skeleton
-              ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+              // Debug logging every 60 frames (~1s)
+              if (frameCountRef.current % 60 === 0) {
+                console.log('[PoseCamera]', {
+                  angle: repStateRef.current.currentAngle,
+                  phase: repStateRef.current.phase,
+                  count: repStateRef.current.count,
+                  formScore: repStateRef.current.formScore,
+                });
+              }
+
+              // Draw skeleton
+              const joints = getHighlightedJoints(det, side);
+              const vertexIdx = getVertexIdx(det, side);
+              drawSkeleton(
+                ctx,
+                smoothed,
+                canvas,
+                joints,
+                repStateRef.current.currentAngle,
+                vertexIdx,
+                det.side === 'both' ? 'both' : side,
+              );
             }
+            // If no landmarks detected, skip drawing — leave previous frame visible
+            // (do NOT clear canvas, which causes black flashing)
+
             animFrameRef.current = requestAnimationFrame(detectFrame);
           } catch (err) {
             console.error('[PoseCamera] Detection error:', err);
@@ -452,7 +378,7 @@ export default function PoseCamera({
       cancelled = true;
       cleanup();
     };
-  }, [isActive, isSingleLeg, cleanup]);
+  }, [isActive, cleanup]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -484,7 +410,7 @@ export default function PoseCamera({
     );
   }
 
-  const legLabel = activeLeg === 'left' ? 'LEFT LEG' : 'RIGHT LEG';
+  const sideLabel = activeSide === 'left' ? 'LEFT' : 'RIGHT';
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
@@ -499,6 +425,27 @@ export default function PoseCamera({
           </div>
         </div>
       )}
+
+      {/* "Get ready" overlay before tracking starts */}
+      <AnimatePresence>
+        {!loading && !ready && (
+          <motion.div
+            key="get_ready"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/55"
+          >
+            <BodyFramingGuide />
+            <p className="font-outfit text-2xl font-bold text-white text-center leading-tight">
+              Step back so your<br />full body is visible
+            </p>
+            <p className="font-mono text-xs text-white/60 tracking-wide">
+              Tracking will start automatically
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Webcam feed (CSS-mirrored) */}
       <video
@@ -515,87 +462,13 @@ export default function PoseCamera({
         className="absolute inset-0 w-full h-full object-cover"
       />
 
-      {/* ── Calibration overlays ──────────────────────────────────────────── */}
-      <AnimatePresence>
-        {/* Phase 1: Stand back */}
-        {calibPhase === 'stand_back' && (
-          <motion.div
-            key="stand_back"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/55"
-          >
-            <BodyFramingGuide />
-            <p className="font-outfit text-2xl font-bold text-white text-center leading-tight">
-              Step back so your<br />full body is visible
-            </p>
-            <p className="font-mono text-xs text-white/60 tracking-wide">
-              We need to see your legs clearly
-            </p>
-          </motion.div>
-        )}
-
-        {/* Phase 2: Detecting active leg */}
-        {calibPhase === 'detecting' && (
-          <motion.div
-            key="detecting"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/40"
-          >
-            <motion.div
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ repeat: Infinity, duration: 1.2 }}
-              className="flex gap-3"
-            >
-              <div className="w-2 h-2 rounded-full bg-accent" />
-              <div className="w-2 h-2 rounded-full bg-accent" />
-              <div className="w-2 h-2 rounded-full bg-accent" />
-            </motion.div>
-            <p className="font-mono text-sm text-white tracking-widest">
-              DETECTING ACTIVE LEG
-            </p>
-          </motion.div>
-        )}
-
-        {/* Phase 3: Leg confirmed */}
-        {calibPhase === 'confirmed' && (
-          <motion.div
-            key="confirmed"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.05 }}
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/50"
-          >
-            <motion.p
-              animate={{ scale: [1, 1.06, 1] }}
-              transition={{ repeat: Infinity, duration: 1 }}
-              className="font-outfit text-5xl font-bold text-accent leading-none"
-            >
-              {legLabel}
-            </motion.p>
-            <p className="font-mono text-sm text-white/70 tracking-widest">
-              DETECTED
-            </p>
-            <button
-              onClick={switchLeg}
-              className="mt-2 px-5 py-2 rounded-full border border-white/30 bg-white/10 text-white text-sm font-outfit"
-            >
-              Switch Leg
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Switch Leg button during tracking (single-leg only) ───────────── */}
-      {calibPhase === 'tracking' && isSingleLeg && (
+      {/* Switch side button (single-side exercises only) */}
+      {isSingleSide && ready && (
         <button
-          onClick={switchLeg}
+          onClick={switchSide}
           className="absolute bottom-4 right-4 z-10 px-3 py-1.5 rounded-full bg-black/50 border border-white/20 text-white text-xs font-mono tracking-wide"
         >
-          Switch Leg
+          {sideLabel} — Tap to switch
         </button>
       )}
     </div>

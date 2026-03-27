@@ -1,4 +1,4 @@
-import type { ExerciseType, ExerciseDetection } from '@/lib/poseDetection';
+import type { Detection } from '@/lib/poseDetection';
 
 export interface ExerciseCard {
   id: string;
@@ -14,8 +14,7 @@ export interface ExerciseCard {
   muscleGroups: string[];
   safetyNote?: string;
   canTryIt: boolean;
-  exerciseType?: ExerciseType;
-  detection: ExerciseDetection | null;
+  detection: Detection | null;
 }
 
 export interface KnowledgeCard {
