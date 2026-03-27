@@ -73,6 +73,7 @@ function buildFeed(
   pref?: PreferenceVector,
   lastArea?: string,
   progressOffset = 0,
+  generation = 0,
 ): FeedCard[] {
   let exList = shuffle ? shuffleArray(exercises) : [...exercises];
 
@@ -97,10 +98,21 @@ function buildFeed(
   const mixed: FeedCard[] = [];
   let exIdx = 0;
   let kbIdx = 0;
+  const suffix = generation > 0 ? `-${generation}` : '';
+
   while (exIdx < exList.length || kbIdx < kbList.length) {
-    if (exIdx < exList.length) mixed.push(exList[exIdx++]);
-    if (exIdx < exList.length) mixed.push(exList[exIdx++]);
-    if (kbIdx < kbList.length) mixed.push(kbList[kbIdx++]);
+    if (exIdx < exList.length) {
+      const ex = exList[exIdx++];
+      mixed.push({ ...ex, id: `${ex.id}${suffix}` });
+    }
+    if (exIdx < exList.length) {
+      const ex = exList[exIdx++];
+      mixed.push({ ...ex, id: `${ex.id}${suffix}` });
+    }
+    if (kbIdx < kbList.length) {
+      const kb = kbList[kbIdx++];
+      mixed.push({ ...kb, id: `${kb.id}${suffix}` });
+    }
   }
 
   // Inject progress cards every 7 cards
@@ -139,6 +151,7 @@ export function useFeed(): UseFeedReturn {
 
   const [tryItActive, setTryItActive] = useState(false);
   const [tryItExercise, setTryItExercise] = useState<ExerciseCard | null>(null);
+  const generationRef = useRef(0);
 
   const [preferenceVector, setPreferenceVector] = useState<PreferenceVector>({
     upperBody: 0.5,
@@ -206,11 +219,13 @@ export function useFeed(): UseFeedReturn {
 
           // Re-sort the tail of the feed based on updated preferences
           progressOffsetRef.current += 10;
+          generationRef.current += 1;
           const newTail = buildFeed(
             true,
             preferenceVectorRef.current,
             lastCompletedAreaRef.current,
             progressOffsetRef.current,
+            generationRef.current,
           );
           setCards((prevCards) => [...prevCards.slice(0, index + 1), ...newTail]);
 
