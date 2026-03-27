@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SplashCursor from './SplashCursor';
 
 interface OnboardingFlowProps {
-  onComplete: () => void;
+  onComplete: (data: { condition: string; phase: string }) => void;
 }
 
 // ─── SVG Icon Components ────────────────────────────────────────────────────
@@ -618,7 +618,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     transition={{ duration: 0.5, ease }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={onComplete}
+                    onClick={() => onComplete({
+                      condition: selectedCondition === 'other' ? otherText || 'General' : selectedCondition || 'ACL',
+                      phase: phases.find(p => p.id === selectedPhase)?.label || 'Building Strength',
+                    })}
                     className="w-full h-14 rounded-2xl font-outfit font-bold text-base tracking-wider relative overflow-hidden"
                     style={{
                       backgroundImage: 'linear-gradient(135deg, #2DD4BF, #06B6D4, #8B5CF6)',
