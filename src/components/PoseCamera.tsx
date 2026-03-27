@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import {
   initPoseLandmarker,
@@ -8,18 +9,33 @@ import {
   detectWallSit,
   detectCalfRaise,
   detectHamstringCurl,
+  detectActiveLeg,
   updateRepCount,
   createRepTracker,
   avgFormScore,
   POSE_CONNECTIONS,
   EXERCISE_JOINTS,
   type ExerciseType,
+  type ActiveLeg,
   type RepTracker,
 } from '@/lib/poseDetection';
 
 // ---------------------------------------------------------------------------
-// Props
+// Types & constants
 // ---------------------------------------------------------------------------
+
+type CalibrationPhase = 'stand_back' | 'detecting' | 'confirmed' | 'tracking';
+
+// Exercises that need single-leg calibration
+const SINGLE_LEG_EXERCISES = new Set<ExerciseType>([
+  'hamstring_curl',
+  'calf_raise',
+  'single_leg_balance',
+]);
+
+// Leg index sets (MediaPipe indices)
+const LEFT_LEG_SET = new Set([23, 25, 27, 29, 31]);
+const RIGHT_LEG_SET = new Set([24, 26, 28, 30, 32]);
 
 interface PoseCameraProps {
   exerciseType: ExerciseType;
@@ -32,20 +48,33 @@ interface PoseCameraProps {
 // Detector dispatch
 // ---------------------------------------------------------------------------
 
-function detect(type: ExerciseType, landmarks: NormalizedLandmark[]) {
+function detect(
+  type: ExerciseType,
+  landmarks: NormalizedLandmark[],
+  activeLeg: ActiveLeg,
+) {
   switch (type) {
     case 'squat':
       return detectSquat(landmarks);
     case 'wall_sit':
       return detectWallSit(landmarks);
     case 'calf_raise':
-      return detectCalfRaise(landmarks);
+      return detectCalfRaise(landmarks, activeLeg);
     case 'hamstring_curl':
-      return detectHamstringCurl(landmarks);
-    // Unsupported types fall through to a simple skeleton display
+      return detectHamstringCurl(landmarks, activeLeg);
     default:
-      return detectSquat(landmarks); // use squat as generic fallback
+      return detectSquat(landmarks);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Visibility helpers
+// ---------------------------------------------------------------------------
+
+function lowerBodyVisible(landmarks: NormalizedLandmark[]): boolean {
+  return [23, 24, 25, 26, 27, 28].every(
+    (i) => (landmarks[i]?.visibility ?? 0) > 0.5,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -59,27 +88,32 @@ function drawSkeleton(
   highlightedJoints: number[],
   angle: number,
   exerciseType: ExerciseType,
+  activeLeg: ActiveLeg,
+  isTracking: boolean,
 ) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Mirror landmarks for drawing (webcam is mirrored via CSS)
-  const mirrored = landmarks.map((l) => ({
-    ...l,
-    x: 1 - l.x,
-  }));
+  // Mirror landmarks (video is CSS-flipped, canvas coordinates must match)
+  const mirrored = landmarks.map((l) => ({ ...l, x: 1 - l.x }));
+
+  const isInactive = (idx: number) => {
+    if (!isTracking || activeLeg === 'both') return false;
+    return activeLeg === 'left' ? RIGHT_LEG_SET.has(idx) : LEFT_LEG_SET.has(idx);
+  };
 
   // Draw connections
   for (const [startIdx, endIdx] of POSE_CONNECTIONS) {
     const start = mirrored[startIdx];
     const end = mirrored[endIdx];
-    if ((start.visibility ?? 0) > 0.5 && (end.visibility ?? 0) > 0.5) {
-      ctx.beginPath();
-      ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-      ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    }
+    if ((start.visibility ?? 0) <= 0.5 || (end.visibility ?? 0) <= 0.5) continue;
+
+    const dimmed = isInactive(startIdx) && isInactive(endIdx);
+    ctx.beginPath();
+    ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+    ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+    ctx.strokeStyle = dimmed ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = dimmed ? 2 : 3;
+    ctx.stroke();
   }
 
   // Draw landmarks
@@ -90,33 +124,41 @@ function drawSkeleton(
 
     const cx = lm.x * canvas.width;
     const cy = lm.y * canvas.height;
-    const isHighlighted = highlightSet.has(idx);
+    const dimmed = isInactive(idx);
+    const highlighted = highlightSet.has(idx) && !dimmed;
 
-    // Glow behind highlighted joints
-    if (isHighlighted) {
+    if (dimmed) {
+      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = '#2DD4BF';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      continue;
+    }
+
+    if (highlighted) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, 14, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(249, 115, 22, 0.35)';
+      ctx.fillStyle = 'rgba(249,115,22,0.35)';
       ctx.fill();
       ctx.restore();
     }
 
     ctx.beginPath();
-    ctx.arc(cx, cy, isHighlighted ? 8 : 5, 0, 2 * Math.PI);
-    ctx.fillStyle = isHighlighted ? '#F97316' : '#2DD4BF';
+    ctx.arc(cx, cy, highlighted ? 8 : 5, 0, 2 * Math.PI);
+    ctx.fillStyle = highlighted ? '#F97316' : '#2DD4BF';
     ctx.fill();
   }
 
-  // Draw angle near the measured joint (knee for most exercises)
+  // Draw angle near the active leg's knee
   if (exerciseType !== 'generic' && angle > 0) {
-    // Pick the knee midpoint for display
-    const leftKnee = mirrored[25];
-    const rightKnee = mirrored[26];
-    const kneeVis = Math.max(leftKnee.visibility ?? 0, rightKnee.visibility ?? 0);
-    if (kneeVis > 0.5) {
-      const kx = ((leftKnee.x + rightKnee.x) / 2) * canvas.width + 20;
-      const ky = ((leftKnee.y + rightKnee.y) / 2) * canvas.height;
+    const kneeIdx = activeLeg === 'right' ? 26 : 25;
+    const knee = mirrored[kneeIdx];
+    if ((knee.visibility ?? 0) > 0.5) {
+      const kx = knee.x * canvas.width + 20;
+      const ky = knee.y * canvas.height;
       ctx.font = 'bold 18px JetBrains Mono, monospace';
       ctx.fillStyle = '#FFFFFF';
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
@@ -125,6 +167,32 @@ function drawSkeleton(
       ctx.fillText(`${angle}°`, kx, ky);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Body framing guide SVG
+// ---------------------------------------------------------------------------
+
+function BodyFramingGuide() {
+  return (
+    <svg
+      viewBox="0 0 60 130"
+      className="w-10 h-24 opacity-60"
+      stroke="white"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <circle cx="30" cy="10" r="7" />
+      <line x1="30" y1="17" x2="30" y2="58" />
+      <line x1="30" y1="30" x2="14" y2="50" />
+      <line x1="30" y1="30" x2="46" y2="50" />
+      <line x1="30" y1="58" x2="20" y2="90" />
+      <line x1="30" y1="58" x2="40" y2="90" />
+      <line x1="20" y1="90" x2="16" y2="118" />
+      <line x1="40" y1="90" x2="44" y2="118" />
+    </svg>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +212,19 @@ export default function PoseCamera({
   const streamRef = useRef<MediaStream | null>(null);
   const lastRepCount = useRef(0);
 
+  // Calibration refs — updated synchronously in the animation loop
+  const calibPhaseRef = useRef<CalibrationPhase>('stand_back');
+  const activeLegRef = useRef<ActiveLeg>('both');
+  const frameBufferRef = useRef<NormalizedLandmark[][]>([]);
+  const phaseStartRef = useRef<number>(0);
+
+  // UI state — drives re-renders
+  const [calibPhase, setCalibPhase] = useState<CalibrationPhase>('stand_back');
+  const [activeLeg, setActiveLeg] = useState<ActiveLeg>('both');
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const isSingleLeg = SINGLE_LEG_EXERCISES.has(exerciseType);
 
   const cleanup = useCallback(() => {
     if (animFrameRef.current) {
@@ -158,19 +237,41 @@ export default function PoseCamera({
     }
     trackerRef.current = createRepTracker();
     lastRepCount.current = 0;
+    calibPhaseRef.current = 'stand_back';
+    activeLegRef.current = 'both';
+    frameBufferRef.current = [];
+  }, []);
+
+  const switchLeg = useCallback(() => {
+    const next: ActiveLeg =
+      activeLegRef.current === 'left' ? 'right' : 'left';
+    activeLegRef.current = next;
+    setActiveLeg(next);
+    // Reset tracker when switching legs mid-exercise
+    trackerRef.current = createRepTracker();
+    lastRepCount.current = 0;
   }, []);
 
   useEffect(() => {
     if (!isActive) {
       cleanup();
+      setCalibPhase('stand_back');
+      setActiveLeg('both');
+      setLoading(true);
       return;
     }
 
     let cancelled = false;
 
+    // Two-leg exercises skip calibration
+    const initialPhase: CalibrationPhase = isSingleLeg ? 'stand_back' : 'tracking';
+    calibPhaseRef.current = initialPhase;
+    activeLegRef.current = isSingleLeg ? 'both' : 'both';
+    phaseStartRef.current = performance.now();
+    setCalibPhase(initialPhase);
+
     async function start() {
       try {
-        // Get webcam stream
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: 640, height: 480 },
         });
@@ -184,54 +285,96 @@ export default function PoseCamera({
         video.srcObject = stream;
         await video.play();
 
-        // Init MediaPipe
         const pose = await initPoseLandmarker();
         if (cancelled) return;
 
         setLoading(false);
+        phaseStartRef.current = performance.now();
 
-        // Set canvas dimensions to match video
         const canvas = canvasRef.current!;
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-
         const ctx = canvas.getContext('2d')!;
-        const highlightedJoints = EXERCISE_JOINTS[exerciseType] ?? [];
 
-        // Detection loop
         function detectFrame() {
           if (cancelled) return;
 
           const results = pose.detectForVideo(video, performance.now());
+          const landmarks = results.landmarks?.[0];
 
-          if (results.landmarks && results.landmarks.length > 0) {
-            const landmarks = results.landmarks[0];
-            const state = detect(exerciseType, landmarks);
+          if (landmarks) {
+            const phase = calibPhaseRef.current;
+            const elapsed = performance.now() - phaseStartRef.current;
 
-            // Update tracker
-            trackerRef.current = updateRepCount(
-              trackerRef.current,
-              state,
-              exerciseType,
-            );
+            // ── Calibration phase transitions ──────────────────────────────
+            if (phase === 'stand_back') {
+              if (elapsed > 2000 || lowerBodyVisible(landmarks)) {
+                calibPhaseRef.current = 'detecting';
+                phaseStartRef.current = performance.now();
+                frameBufferRef.current = [];
+                setCalibPhase('detecting');
+              }
+            } else if (phase === 'detecting') {
+              frameBufferRef.current.push(landmarks);
+              if (elapsed > 1500) {
+                const leg = detectActiveLeg(frameBufferRef.current);
+                activeLegRef.current = leg;
+                calibPhaseRef.current = 'confirmed';
+                phaseStartRef.current = performance.now();
+                setActiveLeg(leg);
+                setCalibPhase('confirmed');
+              }
+            } else if (phase === 'confirmed') {
+              if (elapsed > 1000) {
+                calibPhaseRef.current = 'tracking';
+                setCalibPhase('tracking');
+              }
+            } else {
+              // ── Normal tracking ────────────────────────────────────────
+              const state = detect(
+                exerciseType,
+                landmarks,
+                activeLegRef.current,
+              );
 
-            // Notify parent of rep changes
-            if (trackerRef.current.count > lastRepCount.current) {
-              lastRepCount.current = trackerRef.current.count;
-              onRepCounted(trackerRef.current.count);
+              trackerRef.current = updateRepCount(
+                trackerRef.current,
+                state,
+                exerciseType,
+              );
+
+              if (trackerRef.current.count > lastRepCount.current) {
+                lastRepCount.current = trackerRef.current.count;
+                onRepCounted(trackerRef.current.count);
+              }
+
+              onFormUpdate(avgFormScore(trackerRef.current));
+
+              drawSkeleton(
+                ctx,
+                landmarks,
+                canvas,
+                EXERCISE_JOINTS[exerciseType] ?? [],
+                state.angle,
+                exerciseType,
+                activeLegRef.current,
+                true,
+              );
+
+              animFrameRef.current = requestAnimationFrame(detectFrame);
+              return;
             }
 
-            // Notify parent of form score (rolling avg)
-            onFormUpdate(avgFormScore(trackerRef.current));
-
-            // Draw skeleton
+            // Draw skeleton during calibration (no dimming, highlight lower body)
             drawSkeleton(
               ctx,
               landmarks,
               canvas,
-              highlightedJoints,
-              state.angle,
+              [23, 24, 25, 26, 27, 28],
+              0,
               exerciseType,
+              'both',
+              false,
             );
           }
 
@@ -257,11 +400,11 @@ export default function PoseCamera({
       cancelled = true;
       cleanup();
     };
-  }, [isActive, exerciseType, onRepCounted, onFormUpdate, cleanup]);
+  }, [isActive, exerciseType, isSingleLeg, onRepCounted, onFormUpdate, cleanup]);
 
-  // -----------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
   // Render
-  // -----------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (permissionDenied) {
     return (
@@ -289,10 +432,13 @@ export default function PoseCamera({
     );
   }
 
+  const legLabel = activeLeg === 'left' ? 'LEFT LEG' : 'RIGHT LEG';
+
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
+      {/* Loading spinner */}
       {loading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-card">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-card">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <p className="font-mono text-xs text-text-muted tracking-wide">
@@ -302,6 +448,7 @@ export default function PoseCamera({
         </div>
       )}
 
+      {/* Webcam feed (CSS-mirrored) */}
       <video
         ref={videoRef}
         playsInline
@@ -309,10 +456,96 @@ export default function PoseCamera({
         className="absolute inset-0 w-full h-full object-cover"
         style={{ transform: 'scaleX(-1)' }}
       />
+
+      {/* Canvas skeleton overlay */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full object-cover"
       />
+
+      {/* ── Calibration overlays ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {/* Phase 1: Stand back */}
+        {calibPhase === 'stand_back' && (
+          <motion.div
+            key="stand_back"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/55"
+          >
+            <BodyFramingGuide />
+            <p className="font-outfit text-2xl font-bold text-white text-center leading-tight">
+              Step back so your<br />full body is visible
+            </p>
+            <p className="font-mono text-xs text-white/60 tracking-wide">
+              We need to see your legs clearly
+            </p>
+          </motion.div>
+        )}
+
+        {/* Phase 2: Detecting active leg */}
+        {calibPhase === 'detecting' && (
+          <motion.div
+            key="detecting"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/40"
+          >
+            <motion.div
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ repeat: Infinity, duration: 1.2 }}
+              className="flex gap-3"
+            >
+              <div className="w-2 h-2 rounded-full bg-accent" />
+              <div className="w-2 h-2 rounded-full bg-accent" />
+              <div className="w-2 h-2 rounded-full bg-accent" />
+            </motion.div>
+            <p className="font-mono text-sm text-white tracking-widest">
+              DETECTING ACTIVE LEG
+            </p>
+          </motion.div>
+        )}
+
+        {/* Phase 3: Leg confirmed */}
+        {calibPhase === 'confirmed' && (
+          <motion.div
+            key="confirmed"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05 }}
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/50"
+          >
+            <motion.p
+              animate={{ scale: [1, 1.06, 1] }}
+              transition={{ repeat: Infinity, duration: 1 }}
+              className="font-outfit text-5xl font-bold text-accent leading-none"
+            >
+              {legLabel}
+            </motion.p>
+            <p className="font-mono text-sm text-white/70 tracking-widest">
+              DETECTED
+            </p>
+            <button
+              onClick={switchLeg}
+              className="mt-2 px-5 py-2 rounded-full border border-white/30 bg-white/10 text-white text-sm font-outfit"
+            >
+              Switch Leg
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Switch Leg button during tracking (single-leg only) ───────────── */}
+      {calibPhase === 'tracking' && isSingleLeg && (
+        <button
+          onClick={switchLeg}
+          className="absolute bottom-4 right-4 z-10 px-3 py-1.5 rounded-full bg-black/50 border border-white/20 text-white text-xs font-mono tracking-wide"
+        >
+          Switch Leg
+        </button>
+      )}
     </div>
   );
 }

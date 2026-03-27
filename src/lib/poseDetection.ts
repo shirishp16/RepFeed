@@ -16,6 +16,8 @@ export type ExerciseType =
   | 'single_leg_rdl'
   | 'generic';
 
+export type ActiveLeg = 'left' | 'right' | 'both';
+
 export interface ExerciseState {
   repState: 'up' | 'down' | 'hold';
   angle: number;
@@ -205,24 +207,34 @@ export function detectWallSit(landmarks: NormalizedLandmark[]): ExerciseState {
 
 export function detectCalfRaise(
   landmarks: NormalizedLandmark[],
+  activeLeg: ActiveLeg = 'both',
 ): ExerciseState {
-  const knee = avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
-  const ankle = avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
-  const heel = avg(landmarks, LEFT_HEEL, RIGHT_HEEL);
-  const toe = avg(landmarks, LEFT_FOOT_INDEX, RIGHT_FOOT_INDEX);
+  const side = activeLeg === 'right' ? 'right' : activeLeg === 'left' ? 'left' : null;
 
-  // Heel height relative to toe: when heel is above toe → raised
-  const heelLift = toe.y - heel.y; // positive = heel raised
+  const knee = side
+    ? landmarks[side === 'right' ? RIGHT_KNEE : LEFT_KNEE]
+    : avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
+  const ankle = side
+    ? landmarks[side === 'right' ? RIGHT_ANKLE : LEFT_ANKLE]
+    : avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
+  const heel = side
+    ? landmarks[side === 'right' ? RIGHT_HEEL : LEFT_HEEL]
+    : avg(landmarks, LEFT_HEEL, RIGHT_HEEL);
+  const toe = side
+    ? landmarks[side === 'right' ? RIGHT_FOOT_INDEX : LEFT_FOOT_INDEX]
+    : avg(landmarks, LEFT_FOOT_INDEX, RIGHT_FOOT_INDEX);
+  const hip = side
+    ? landmarks[side === 'right' ? RIGHT_HIP : LEFT_HIP]
+    : avg(landmarks, LEFT_HIP, RIGHT_HIP);
+
+  const heelLift = toe.y - heel.y;
 
   let repState: ExerciseState['repState'] = 'hold';
   if (heelLift > 0.02) repState = 'up';
   else if (heelLift < 0.005) repState = 'down';
 
-  // Angle for display: knee straightness
-  const hipAvg = avg(landmarks, LEFT_HIP, RIGHT_HIP);
-  const kneeAngle = calculateAngle(hipAvg, knee, ankle);
+  const kneeAngle = calculateAngle(hip, knee, ankle);
 
-  // Form: knees should stay straight (> 170°)
   let formScore = 85;
   if (kneeAngle < 170) formScore -= Math.min(35, (170 - kneeAngle) * 2.5);
   formScore = Math.max(0, Math.round(formScore));
@@ -232,30 +244,71 @@ export function detectCalfRaise(
 
 export function detectHamstringCurl(
   landmarks: NormalizedLandmark[],
+  activeLeg: ActiveLeg = 'both',
 ): ExerciseState {
-  const hip = avg(landmarks, LEFT_HIP, RIGHT_HIP);
-  const knee = avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
-  const ankle = avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
+  // Use the specific active leg; default to left when 'both'
+  const side = activeLeg === 'right' ? 'right' : 'left';
+  const hipIdx = side === 'right' ? RIGHT_HIP : LEFT_HIP;
+  const kneeIdx = side === 'right' ? RIGHT_KNEE : LEFT_KNEE;
+  const ankleIdx = side === 'right' ? RIGHT_ANKLE : LEFT_ANKLE;
+
+  const hip = landmarks[hipIdx];
+  const knee = landmarks[kneeIdx];
+  const ankle = landmarks[ankleIdx];
   const shoulder = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
 
-  // Hip-knee-ankle angle: ~170° when standing straight, ~90-130° when curled
   const kneeAngle = calculateAngle(hip, knee, ankle);
 
   let repState: ExerciseState['repState'] = 'hold';
   if (kneeAngle > 160) repState = 'up';       // leg straight (standing)
   else if (kneeAngle < 130) repState = 'down'; // foot kicked back toward glute
 
-  // Form score: hip stability (hip y shouldn't drift) + upright torso
-  let formScore = 85; // realistic baseline — not perfect by default
-  // Penalise hip hiking (shoulder-hip vertical delta: torso should stay upright)
-  const torsoLean = Math.abs(shoulder.x - hip.x);
+  let formScore = 85;
+  const torsoLean = Math.abs(shoulder.x - ((hip.x + landmarks[side === 'right' ? LEFT_HIP : RIGHT_HIP].x) / 2));
   if (torsoLean > 0.06) formScore -= Math.min(25, (torsoLean - 0.06) * 400);
-  // Penalise hip moving forward/backward relative to knee
   const hipDrift = Math.abs(hip.x - knee.x);
   if (hipDrift > 0.15) formScore -= Math.min(20, (hipDrift - 0.15) * 200);
   formScore = Math.max(0, Math.round(formScore));
 
   return { repState, angle: Math.round(kneeAngle), formScore };
+}
+
+// ---------------------------------------------------------------------------
+// Active leg detection
+// ---------------------------------------------------------------------------
+
+/** Examine a buffer of frames and return which leg moved more (higher angle variance). */
+export function detectActiveLeg(frameBuffer: NormalizedLandmark[][]): ActiveLeg {
+  if (frameBuffer.length < 3) return 'left';
+
+  const leftAngles = frameBuffer.map((lms) => {
+    const h = lms[LEFT_HIP], k = lms[LEFT_KNEE], a = lms[LEFT_ANKLE];
+    if (!h || !k || !a) return 0;
+    return calculateAngle(h, k, a);
+  });
+  const rightAngles = frameBuffer.map((lms) => {
+    const h = lms[RIGHT_HIP], k = lms[RIGHT_KNEE], a = lms[RIGHT_ANKLE];
+    if (!h || !k || !a) return 0;
+    return calculateAngle(h, k, a);
+  });
+
+  const variance = (arr: number[]) => {
+    const mean = arr.reduce((s, v) => s + v, 0) / arr.length;
+    return arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+  };
+
+  const leftVar = variance(leftAngles);
+  const rightVar = variance(rightAngles);
+
+  // If variance is similar, prefer the leg closer to camera (lower z in MediaPipe)
+  if (Math.abs(leftVar - rightVar) < 5) {
+    const last = frameBuffer[frameBuffer.length - 1];
+    const leftZ = last[LEFT_KNEE]?.z ?? 0;
+    const rightZ = last[RIGHT_KNEE]?.z ?? 0;
+    return leftZ < rightZ ? 'left' : 'right';
+  }
+
+  return leftVar > rightVar ? 'left' : 'right';
 }
 
 // ---------------------------------------------------------------------------
