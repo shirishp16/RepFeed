@@ -8,7 +8,7 @@ backend:
 
 install:
 	cd frontend && npm install
-	cd backend && pip3 install -r requirements.txt
+	cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 
 dev:
 	@echo "Run in separate terminals:"

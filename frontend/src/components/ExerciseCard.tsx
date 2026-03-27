@@ -1,9 +1,9 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Camera, AlertTriangle } from 'lucide-react';
+import { Camera, AlertTriangle, Heart, ChevronUp, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
 import type { ExerciseCard as ExerciseCardType } from '@/data/mockData';
-import CardActions from './CardActions';
 
 interface ExerciseCardProps {
   exercise: ExerciseCardType;
@@ -20,174 +20,240 @@ export default function ExerciseCard({
   onTooHard,
   onTryIt,
 }: ExerciseCardProps) {
-  const difficultyDots = Array.from({ length: 10 }, (_, i) => i < exercise.difficulty);
+  const [liked, setLiked] = useState(false);
+
+  const handleLike = () => {
+    setLiked((p) => !p);
+    onLike(exercise.id);
+  };
+
+  const difficultyPercent = (exercise.difficulty / 10) * 100;
 
   return (
-    <div className="relative h-[100dvh] w-full flex flex-col justify-center px-6 py-20 overflow-hidden">
-      {/* Subtle ambient glow behind card */}
+    <div className="relative h-[100dvh] w-full flex flex-col items-center justify-center px-5 py-16 overflow-hidden">
+      {/* Soft ambient backdrop */}
       <div
-        className="absolute top-1/4 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(circle, rgba(45,212,191,0.06) 0%, transparent 70%)',
-          filter: 'blur(60px)',
+          background:
+            'radial-gradient(ellipse at 30% 30%, rgba(45,212,191,0.05) 0%, transparent 55%)',
         }}
       />
 
-      <CardActions
-        cardId={exercise.id}
-        onLike={onLike}
-        onTooEasy={onTooEasy}
-        onTooHard={onTooHard}
-      />
-
-      <div className="max-w-md mx-auto w-full space-y-5 pr-14">
-        {/* Top pills */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <span
-            className="px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wide text-accent"
-            style={{
-              background: 'rgba(45, 212, 191, 0.1)',
-              border: '1px solid rgba(45, 212, 191, 0.2)',
-              boxShadow: '0 0 8px rgba(45,212,191,0.06)',
-            }}
-          >
-            {exercise.targetArea}
-          </span>
-
-          <div className="flex items-center gap-0.5">
-            {difficultyDots.map((filled, i) => (
-              <div
-                key={i}
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: filled ? '#2DD4BF' : 'rgba(255,255,255,0.08)',
-                  boxShadow: filled ? '0 0 4px rgba(45,212,191,0.4)' : 'none',
-                }}
-              />
-            ))}
-          </div>
-
-          <span
-            className="ml-auto px-2 py-0.5 rounded-full text-xs font-mono font-bold text-accent"
-            style={{
-              background: 'rgba(45, 212, 191, 0.1)',
-              border: '1px solid rgba(45, 212, 191, 0.15)',
-              boxShadow: '0 0 6px rgba(45,212,191,0.08)',
-            }}
-          >
-            +{exercise.xpReward} XP
-          </span>
-        </div>
-
-        {/* Name */}
-        <motion.h2
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="font-outfit text-[28px] font-bold text-text-primary leading-tight"
-          style={{ textShadow: '0 0 40px rgba(45,212,191,0.08)' }}
-        >
-          {exercise.name}
-        </motion.h2>
-
-        {/* Description */}
-        <p className="text-base text-text-secondary leading-relaxed">
-          {exercise.description}
-        </p>
-
-        {/* Why It Helps — glass card */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.4 }}
-          className="rounded-xl p-4"
-          style={{
-            background: 'rgba(45, 212, 191, 0.04)',
-            backdropFilter: 'blur(8px)',
-            borderLeft: '3px solid rgba(45, 212, 191, 0.5)',
-            border: '1px solid rgba(45, 212, 191, 0.1)',
-            borderLeftWidth: '3px',
-            borderLeftColor: 'rgba(45, 212, 191, 0.5)',
-            boxShadow: '0 0 15px rgba(45,212,191,0.03)',
-          }}
-        >
-          <p className="text-xs font-mono font-bold text-accent mb-1.5 tracking-wide"
-            style={{ textShadow: '0 0 8px rgba(45,212,191,0.3)' }}
-          >
-            WHY THIS HELPS
-          </p>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            {exercise.whyItHelps}
-          </p>
-        </motion.div>
-
-        {/* Reps / Duration */}
-        <div className="flex items-center gap-3">
-          <span
-            className="px-3 py-1.5 rounded-full text-text-primary text-sm font-mono font-bold"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            {exercise.reps ? `${exercise.reps} reps` : exercise.duration}
-          </span>
-
-          {exercise.safetyNote && (
-            <div className="flex items-center gap-1.5 text-warning">
-              <AlertTriangle className="w-4 h-4" />
-              <span className="text-xs font-outfit">{exercise.safetyNote}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Muscle group tags */}
-        <div className="flex flex-wrap gap-2">
-          {exercise.muscleGroups.map((mg) => (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: 'rgba(22, 22, 26, 0.97)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset',
+        }}
+      >
+        {/* ── Header ── */}
+        <div className="px-6 pt-6 pb-5">
+          {/* Area + XP row */}
+          <div className="flex items-center justify-between mb-4">
             <span
-              key={mg}
-              className="px-2 py-0.5 rounded-md text-xs font-mono"
+              className="text-xs font-semibold tracking-wide px-3 py-1 rounded-full"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                color: 'rgba(255,255,255,0.3)',
-                border: '1px solid rgba(255,255,255,0.05)',
+                background: 'rgba(45,212,191,0.1)',
+                color: '#2DD4BF',
+                border: '1px solid rgba(45,212,191,0.18)',
               }}
             >
-              {mg}
+              {exercise.targetArea}
             </span>
-          ))}
+            <span
+              className="text-xs font-semibold px-3 py-1 rounded-full"
+              style={{
+                background: 'rgba(249,115,22,0.1)',
+                color: '#F97316',
+                border: '1px solid rgba(249,115,22,0.18)',
+              }}
+            >
+              +{exercise.xpReward} XP
+            </span>
+          </div>
+
+          {/* Exercise name */}
+          <h2 className="font-outfit text-2xl font-bold text-text-primary leading-snug mb-3">
+            {exercise.name}
+          </h2>
+
+          {/* Difficulty bar */}
+          <div className="flex items-center gap-3">
+            <div
+              className="flex-1 h-1.5 rounded-full overflow-hidden"
+              style={{ background: 'rgba(255,255,255,0.07)' }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${difficultyPercent}%`,
+                  background: 'linear-gradient(90deg, #2DD4BF, #8B5CF6)',
+                }}
+              />
+            </div>
+            <span className="text-xs text-text-secondary font-outfit tabular-nums">
+              {exercise.difficulty}/10
+            </span>
+          </div>
         </div>
 
-        {/* TRY IT button — premium gradient */}
-        {exercise.canTryIt && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.4, duration: 0.3 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => onTryIt(exercise)}
-            className="w-full h-14 rounded-2xl font-outfit font-bold text-base flex items-center justify-center gap-2 text-white relative overflow-hidden"
+        {/* ── Divider ── */}
+        <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+
+        {/* ── Body ── */}
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-sm text-text-secondary leading-relaxed font-outfit">
+            {exercise.description}
+          </p>
+
+          {/* Why it helps */}
+          <div
+            className="rounded-2xl px-4 py-3.5"
             style={{
-              backgroundImage: 'linear-gradient(135deg, #2DD4BF, #06B6D4, #8B5CF6)',
-              backgroundSize: '200% 200%',
-              animation: 'mesh-shift 4s ease-in-out infinite',
-              boxShadow: '0 0 25px rgba(45,212,191,0.25), 0 0 50px rgba(139,92,246,0.1), 0 4px 15px rgba(0,0,0,0.3)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(45,212,191,0.05)',
+              borderLeft: '2px solid rgba(45,212,191,0.4)',
             }}
           >
-            <Camera className="w-5 h-5 relative z-10" />
-            <span className="relative z-10">TRY IT</span>
-            <div
-              className="absolute inset-0 opacity-30"
+            <p className="text-xs text-accent font-semibold mb-1 tracking-wide">
+              Why this helps
+            </p>
+            <p className="text-sm text-text-secondary leading-relaxed">
+              {exercise.whyItHelps}
+            </p>
+          </div>
+
+          {/* Reps + safety */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-sm font-outfit font-semibold px-3.5 py-1.5 rounded-xl text-text-primary"
               style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
-                animation: 'shimmer-btn 3s infinite',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.07)',
               }}
-            />
-          </motion.button>
-        )}
-      </div>
+            >
+              {exercise.reps ? `${exercise.reps} reps` : exercise.duration}
+            </span>
+            {exercise.safetyNote && (
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-warning flex-shrink-0" />
+                <span className="text-xs text-warning font-outfit">{exercise.safetyNote}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Muscle tags */}
+          <div className="flex flex-wrap gap-1.5">
+            {exercise.muscleGroups.map((mg) => (
+              <span
+                key={mg}
+                className="text-xs px-2.5 py-1 rounded-lg font-outfit"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'rgba(255,255,255,0.3)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                {mg}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Footer: TRY IT + Actions ── */}
+        <div
+          className="px-6 pb-6 pt-4 space-y-3"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+        >
+          {exercise.canTryIt && (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => onTryIt(exercise)}
+              className="w-full h-12 rounded-2xl font-outfit font-semibold text-sm flex items-center justify-center gap-2 text-white relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, #2DD4BF, #06B6D4)',
+                boxShadow: '0 4px 16px rgba(45,212,191,0.2)',
+              }}
+            >
+              <Camera className="w-4 h-4" />
+              TRY IT — AI Form Check
+            </motion.button>
+          )}
+
+          {/* Action buttons row */}
+          <div className="flex items-center justify-around pt-1">
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              onClick={handleLike}
+              className="flex flex-col items-center gap-1"
+            >
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all"
+                style={{
+                  background: liked ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: liked ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                <Heart
+                  className="w-4.5 h-4.5 transition-colors"
+                  style={{
+                    color: liked ? '#EF4444' : 'rgba(255,255,255,0.35)',
+                    fill: liked ? '#EF4444' : 'transparent',
+                    width: '18px',
+                    height: '18px',
+                  }}
+                />
+              </div>
+              <span className="text-[10px] font-outfit" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                Like
+              </span>
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              onClick={() => onTooEasy(exercise.id)}
+              className="flex flex-col items-center gap-1"
+            >
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                <ChevronUp className="w-4.5 h-4.5" style={{ color: 'rgba(255,255,255,0.35)', width: '18px', height: '18px' }} />
+              </div>
+              <span className="text-[10px] font-outfit" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                Too easy
+              </span>
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              onClick={() => onTooHard(exercise.id)}
+              className="flex flex-col items-center gap-1"
+            >
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                <ChevronDown className="w-4.5 h-4.5" style={{ color: 'rgba(255,255,255,0.35)', width: '18px', height: '18px' }} />
+              </div>
+              <span className="text-[10px] font-outfit" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                Too hard
+              </span>
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
