@@ -6,6 +6,7 @@ import {
   type ExerciseCard,
   type KnowledgeCard,
 } from '@/data/mockData';
+import type { ExerciseDetection } from '@/lib/poseDetection';
 import { updatePreferences } from '@/lib/behavioralEngine';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -66,6 +67,7 @@ function toExerciseCard(raw: Record<string, unknown>, idx: number): ExerciseCard
     safetyNote: (raw.safetyNote as string) || undefined,
     canTryIt: Boolean(raw.canTryIt),
     exerciseType: (raw.exerciseType as ExerciseCard['exerciseType']) ?? undefined,
+    detection: (raw.detection as ExerciseDetection) ?? null,
   };
 }
 

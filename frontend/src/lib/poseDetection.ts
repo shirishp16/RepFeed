@@ -7,6 +7,7 @@ import type { PoseLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision
 // Types
 // ---------------------------------------------------------------------------
 
+/** Backwards-compat type — no longer used for detection dispatch. */
 export type ExerciseType =
   | 'squat'
   | 'wall_sit'
@@ -18,7 +19,22 @@ export type ExerciseType =
 
 export type ActiveLeg = 'left' | 'right' | 'both';
 
-// Leg index sets (MediaPipe indices)
+export interface ExerciseDetection {
+  joint_triplet: [string, string, string];
+  side: 'single_leg' | 'both_legs' | 'single_arm';
+  start_angle_min: number;
+  start_angle_max: number;
+  end_angle_min: number;
+  end_angle_max: number;
+  rep_direction: 'high_to_low' | 'low_to_high';
+  form_checks: Array<{
+    check: string;
+    description: string;
+    penalty: number;
+  }>;
+}
+
+// Leg index sets (MediaPipe indices) — used by PoseCamera for dimming
 export const LEFT_LEG_SET = new Set([23, 25, 27, 29, 31]);
 export const RIGHT_LEG_SET = new Set([24, 26, 28, 30, 32]);
 
@@ -33,31 +49,52 @@ export interface RepTracker {
   lastState: 'up' | 'down' | 'hold' | null;
   formScores: number[];
   currentAngle: number;
-  isHolding: boolean;
-  holdStartTime: number | null;
-  holdDuration: number;
   lastRepTime: number | null;
 }
 
 // ---------------------------------------------------------------------------
-// Landmark indices
+// Joint map — maps detection param names to MediaPipe landmark indices
 // ---------------------------------------------------------------------------
 
-const LEFT_SHOULDER = 11;
-const RIGHT_SHOULDER = 12;
-const LEFT_HIP = 23;
-const RIGHT_HIP = 24;
-const LEFT_KNEE = 25;
-const RIGHT_KNEE = 26;
-const LEFT_ANKLE = 27;
-const RIGHT_ANKLE = 28;
-const LEFT_HEEL = 29;
-const RIGHT_HEEL = 30;
-const LEFT_FOOT_INDEX = 31;
-const RIGHT_FOOT_INDEX = 32;
+/** Maps joint name → [leftIdx, rightIdx] in MediaPipe landmark space. */
+export const JOINT_MAP: Record<string, [number, number]> = {
+  shoulder: [11, 12],
+  elbow: [13, 14],
+  wrist: [15, 16],
+  hip: [23, 24],
+  knee: [25, 26],
+  ankle: [27, 28],
+  heel: [29, 30],
+  foot: [31, 32],
+};
+
+/** Get all MediaPipe indices involved in a detection's joint triplet. */
+export function getJointsFromDetection(detection: ExerciseDetection): number[] {
+  const joints: number[] = [];
+  for (const name of detection.joint_triplet) {
+    const pair = JOINT_MAP[name];
+    if (pair) joints.push(pair[0], pair[1]);
+  }
+  return joints;
+}
+
+/** Get the vertex (middle joint) index for the active side — used for angle display. */
+export function getVertexJointIdx(
+  detection: ExerciseDetection,
+  activeLeg: ActiveLeg,
+): number | null {
+  const vertexName = detection.joint_triplet[1];
+  const pair = JOINT_MAP[vertexName];
+  if (!pair) return null;
+  if (detection.side === 'both_legs' || activeLeg === 'both') {
+    // Default to left for display purposes
+    return pair[0];
+  }
+  return activeLeg === 'left' ? pair[0] : pair[1];
+}
 
 // ---------------------------------------------------------------------------
-// Connections & highlight maps (used by PoseCamera for drawing)
+// Connections (used by PoseCamera for skeleton drawing)
 // ---------------------------------------------------------------------------
 
 export const POSE_CONNECTIONS: [number, number][] = [
@@ -79,26 +116,6 @@ export const POSE_CONNECTIONS: [number, number][] = [
   [24, 26],
   [26, 28],
 ];
-
-export const EXERCISE_JOINTS: Record<ExerciseType, number[]> = {
-  squat: [23, 24, 25, 26, 27, 28],
-  wall_sit: [23, 24, 25, 26, 27, 28],
-  calf_raise: [25, 26, 27, 28, 29, 30, 31, 32],
-  hamstring_curl: [23, 24, 25, 26, 27, 28],
-  single_leg_balance: [23, 24, 25, 26, 27, 28],
-  single_leg_rdl: [11, 12, 23, 24, 25, 26],
-  generic: [],
-};
-
-/** Get highlighted joints for an exercise, filtered by active leg if applicable. */
-export function getExerciseJoints(type: ExerciseType, activeLeg: ActiveLeg): number[] {
-  const joints = EXERCISE_JOINTS[type] ?? [];
-  if (activeLeg === 'both') return joints;
-  
-  const set = activeLeg === 'left' ? LEFT_LEG_SET : RIGHT_LEG_SET;
-  // Keep joints that belong to the active leg OR are neutral (torso: 11, 12, 23, 24, arms: 13-16)
-  return joints.filter(idx => set.has(idx) || [11, 12, 23, 24, 13, 14, 15, 16].includes(idx));
-}
 
 // ---------------------------------------------------------------------------
 // Singleton landmarker
@@ -154,205 +171,147 @@ export function calculateAngle(
   return angle;
 }
 
-/** Average a landmark pair (left/right) weighted by visibility. */
-function avg(
+// ---------------------------------------------------------------------------
+// Generic exercise detector — replaces all specific detect functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect rep state and form score using the LLM-provided detection params.
+ * Works for ANY exercise — no hardcoded exercise types.
+ */
+export function detectGeneric(
   landmarks: NormalizedLandmark[],
-  leftIdx: number,
-  rightIdx: number,
-): { x: number; y: number; vis: number } {
-  const l = landmarks[leftIdx];
-  const r = landmarks[rightIdx];
-  const lv = l.visibility ?? 0;
-  const rv = r.visibility ?? 0;
-  const total = lv + rv || 1;
-  return {
-    x: (l.x * lv + r.x * rv) / total,
-    y: (l.y * lv + r.y * rv) / total,
-    vis: Math.max(lv, rv),
-  };
+  detection: ExerciseDetection,
+  activeLeg: ActiveLeg,
+): ExerciseState {
+  const [jointA, jointB, jointC] = detection.joint_triplet;
+  const pairA = JOINT_MAP[jointA];
+  const pairB = JOINT_MAP[jointB];
+  const pairC = JOINT_MAP[jointC];
+
+  if (!pairA || !pairB || !pairC) {
+    return { repState: 'hold', angle: 0, formScore: 100 };
+  }
+
+  let angle: number;
+
+  if (detection.side === 'both_legs' || activeLeg === 'both') {
+    // Average both sides
+    const leftAngle = calculateAngle(
+      landmarks[pairA[0]],
+      landmarks[pairB[0]],
+      landmarks[pairC[0]],
+    );
+    const rightAngle = calculateAngle(
+      landmarks[pairA[1]],
+      landmarks[pairB[1]],
+      landmarks[pairC[1]],
+    );
+    angle = (leftAngle + rightAngle) / 2;
+  } else {
+    // Single side
+    const sideIdx = activeLeg === 'left' ? 0 : 1;
+    angle = calculateAngle(
+      landmarks[pairA[sideIdx]],
+      landmarks[pairB[sideIdx]],
+      landmarks[pairC[sideIdx]],
+    );
+  }
+
+  angle = Math.round(angle);
+
+  // Determine rep state with generous ±10° tolerance
+  const inStart =
+    angle >= detection.start_angle_min - 10 &&
+    angle <= detection.start_angle_max + 10;
+  const inEnd =
+    angle >= detection.end_angle_min - 10 &&
+    angle <= detection.end_angle_max + 10;
+  // "Past end" — user went deeper than the expected range
+  const pastEnd =
+    detection.rep_direction === 'high_to_low'
+      ? angle < detection.end_angle_min - 10
+      : angle > detection.end_angle_max + 10;
+
+  let repState: ExerciseState['repState'] = 'hold';
+  if (inEnd || pastEnd) repState = 'down';
+  else if (inStart) repState = 'up';
+
+  const formScore = calculateFormScore(landmarks, detection);
+
+  return { repState, angle, formScore };
 }
 
 // ---------------------------------------------------------------------------
-// Exercise detectors
+// Form score calculation
 // ---------------------------------------------------------------------------
 
-export function detectSquat(landmarks: NormalizedLandmark[]): ExerciseState {
-  const hip = avg(landmarks, LEFT_HIP, RIGHT_HIP);
-  const knee = avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
-  const ankle = avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
-  const shoulder = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
-
-  const kneeAngle = calculateAngle(hip, knee, ankle);
-
-  // Rep state — relaxed threshold so mini squats (~135°) register
-  let repState: ExerciseState['repState'] = 'hold';
-  if (kneeAngle < 140) repState = 'down';
-  else if (kneeAngle > 160) repState = 'up';
-
-  // Form score — start at 100, deduct for each form error
-  let formScore = 100;
-
-  // Knees caving inward (left knee x < left ankle x, right knee x > right ankle x)
-  const lk = landmarks[LEFT_KNEE];
-  const la = landmarks[LEFT_ANKLE];
-  const rk = landmarks[RIGHT_KNEE];
-  const ra = landmarks[RIGHT_ANKLE];
-  if ((lk.visibility ?? 0) > 0.5 && (la.visibility ?? 0) > 0.5) {
-    if (lk.x < la.x) formScore -= 15;
-  }
-  if ((rk.visibility ?? 0) > 0.5 && (ra.visibility ?? 0) > 0.5) {
-    if (rk.x > ra.x) formScore -= 15;
-  }
-
-  // Back not straight (shoulder-hip angle > 20° from vertical)
-  const leanDeg =
-    Math.atan2(Math.abs(shoulder.x - hip.x), Math.abs(hip.y - shoulder.y + 0.001)) *
-    (180 / Math.PI);
-  if (leanDeg > 20) formScore -= Math.min(20, (leanDeg - 20) * 1.5);
-
-  // Uneven weight distribution (left vs right knee angle diff > 15°)
-  const leftKneeAngle = calculateAngle(landmarks[LEFT_HIP], landmarks[LEFT_KNEE], landmarks[LEFT_ANKLE]);
-  const rightKneeAngle = calculateAngle(landmarks[RIGHT_HIP], landmarks[RIGHT_KNEE], landmarks[RIGHT_ANKLE]);
-  if (Math.abs(leftKneeAngle - rightKneeAngle) > 15) formScore -= 10;
-
-  formScore = Math.max(0, Math.round(formScore));
-  return { repState, angle: Math.round(kneeAngle), formScore };
-}
-
-export function detectWallSit(landmarks: NormalizedLandmark[]): ExerciseState {
-  const hip = avg(landmarks, LEFT_HIP, RIGHT_HIP);
-  const knee = avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
-  const ankle = avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
-  const shoulder = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
-
-  const kneeAngle = calculateAngle(hip, knee, ankle);
-
-  let repState: ExerciseState['repState'] = 'up';
-  if (kneeAngle >= 70 && kneeAngle <= 110) repState = 'hold';
-
-  // Form score — start at 100
-  let formScore = 100;
-
-  // Knee angle should be 80-100° (deduct based on distance from 90°)
-  const angleDeviation = Math.abs(kneeAngle - 90);
-  if (angleDeviation > 10) formScore -= Math.min(20, (angleDeviation - 10) * 2);
-
-  // Back not flat (shoulder-hip not vertically aligned)
-  const backLeanDeg =
-    Math.atan2(Math.abs(shoulder.x - hip.x), Math.abs(hip.y - shoulder.y + 0.001)) *
-    (180 / Math.PI);
-  if (backLeanDeg > 10) formScore -= Math.min(15, (backLeanDeg - 10) * 1.5);
-
-  // Knees past toes (knee x vs ankle x lateral offset)
-  const kneeForward = Math.abs(knee.x - ankle.x);
-  if (kneeForward > 0.06) formScore -= Math.min(10, (kneeForward - 0.06) * 150);
-
-  formScore = Math.max(0, Math.round(formScore));
-  return { repState, angle: Math.round(kneeAngle), formScore };
-}
-
-export function detectCalfRaise(
+function calculateFormScore(
   landmarks: NormalizedLandmark[],
-  activeLeg: ActiveLeg = 'both',
-): ExerciseState {
-  const side = activeLeg === 'right' ? 'right' : activeLeg === 'left' ? 'left' : null;
+  detection: ExerciseDetection,
+): number {
+  let score = 100;
 
-  const knee = side
-    ? landmarks[side === 'right' ? RIGHT_KNEE : LEFT_KNEE]
-    : avg(landmarks, LEFT_KNEE, RIGHT_KNEE);
-  const ankle = side
-    ? landmarks[side === 'right' ? RIGHT_ANKLE : LEFT_ANKLE]
-    : avg(landmarks, LEFT_ANKLE, RIGHT_ANKLE);
-  const heel = side
-    ? landmarks[side === 'right' ? RIGHT_HEEL : LEFT_HEEL]
-    : avg(landmarks, LEFT_HEEL, RIGHT_HEEL);
-  const toe = side
-    ? landmarks[side === 'right' ? RIGHT_FOOT_INDEX : LEFT_FOOT_INDEX]
-    : avg(landmarks, LEFT_FOOT_INDEX, RIGHT_FOOT_INDEX);
-  const hip = side
-    ? landmarks[side === 'right' ? RIGHT_HIP : LEFT_HIP]
-    : avg(landmarks, LEFT_HIP, RIGHT_HIP);
-
-  const heelLift = toe.y - heel.y;
-
-  let repState: ExerciseState['repState'] = 'hold';
-  if (heelLift > 0.02) repState = 'up';
-  else if (heelLift < 0.005) repState = 'down';
-
-  const kneeAngle = calculateAngle(hip, knee, ankle);
-  const shoulderAvg = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
-  const hipAvg = avg(landmarks, LEFT_HIP, RIGHT_HIP);
-
-  // Form score — start at 100
-  let formScore = 100;
-
-  // Knees bending during raise (knee angle < 165°)
-  if (kneeAngle < 165) formScore -= Math.min(20, (165 - kneeAngle) * 2);
-
-  // Leaning forward (shoulder x deviates from hip x)
-  const forwardLean = Math.abs(shoulderAvg.x - hipAvg.x);
-  if (forwardLean > 0.06) formScore -= Math.min(15, (forwardLean - 0.06) * 200);
-
-  // Uneven rise — bilateral only (left vs right ankle y difference)
-  if (!side) {
-    const leftAnkleY = landmarks[LEFT_ANKLE].y;
-    const rightAnkleY = landmarks[RIGHT_ANKLE].y;
-    const ankleYDiff = Math.abs(leftAnkleY - rightAnkleY);
-    if (ankleYDiff > 0.03) formScore -= Math.min(10, (ankleYDiff - 0.03) * 200);
+  for (const check of detection.form_checks) {
+    switch (check.check) {
+      case 'upper_body_upright': {
+        const shoulder = landmarks[11]; // left shoulder
+        const hip = landmarks[23]; // left hip
+        const lean = Math.abs(shoulder.x - hip.x);
+        if (lean > 0.08) score -= check.penalty;
+        break;
+      }
+      case 'knees_over_toes': {
+        const knee = landmarks[25]; // left knee
+        const ankle = landmarks[27]; // left ankle
+        if (Math.abs(knee.x - ankle.x) > 0.06) score -= check.penalty;
+        break;
+      }
+      case 'back_straight': {
+        const shoulder = landmarks[11];
+        const hip = landmarks[23];
+        const leanDeg =
+          Math.atan2(
+            Math.abs(shoulder.x - hip.x),
+            Math.abs(hip.y - shoulder.y + 0.001),
+          ) *
+          (180 / Math.PI);
+        if (leanDeg > 20) score -= check.penalty;
+        break;
+      }
+      case 'knee_straight': {
+        const kHip = landmarks[23];
+        const kKnee = landmarks[25];
+        const kAnkle = landmarks[27];
+        const kneeAngle = calculateAngle(kHip, kKnee, kAnkle);
+        if (kneeAngle < 165) score -= check.penalty;
+        break;
+      }
+      case 'hip_stable': {
+        // Check hip level (left vs right hip y difference)
+        const hipDiff = Math.abs(landmarks[23].y - landmarks[24].y);
+        if (hipDiff > 0.05) score -= check.penalty;
+        break;
+      }
+      default:
+        // Unknown check — skip silently
+        break;
+    }
   }
 
-  formScore = Math.max(0, Math.round(formScore));
-  return { repState, angle: Math.round(kneeAngle), formScore };
-}
-
-export function detectHamstringCurl(
-  landmarks: NormalizedLandmark[],
-  activeLeg: ActiveLeg = 'both',
-): ExerciseState {
-  // Use the specific active leg; default to left when 'both'
-  const side = activeLeg === 'right' ? 'right' : 'left';
-  const hipIdx = side === 'right' ? RIGHT_HIP : LEFT_HIP;
-  const kneeIdx = side === 'right' ? RIGHT_KNEE : LEFT_KNEE;
-  const ankleIdx = side === 'right' ? RIGHT_ANKLE : LEFT_ANKLE;
-
-  const hip = landmarks[hipIdx];
-  const knee = landmarks[kneeIdx];
-  const ankle = landmarks[ankleIdx];
-  const shoulder = avg(landmarks, LEFT_SHOULDER, RIGHT_SHOULDER);
-
-  const kneeAngle = calculateAngle(hip, knee, ankle);
-
-  let repState: ExerciseState['repState'] = 'hold';
-  if (kneeAngle > 160) repState = 'up';       // leg straight (standing)
-  else if (kneeAngle < 130) repState = 'down'; // foot kicked back toward glute
-
-  // Form score — start at 100
-  let formScore = 100;
-  const oppHipIdx = side === 'right' ? LEFT_HIP : RIGHT_HIP;
-  const oppHip = landmarks[oppHipIdx];
-
-  // Hip tilting (left vs right hip y difference — instability)
-  const hipYDiff = Math.abs(hip.y - oppHip.y);
-  if (hipYDiff > 0.05) formScore -= Math.min(20, (hipYDiff - 0.05) * 400);
-
-  // Upper body leaning (shoulder-hip angle from vertical)
-  const avgHipX = (hip.x + oppHip.x) / 2;
-  const avgHipY = (hip.y + oppHip.y) / 2;
-  const torsoLeanDeg =
-    Math.atan2(Math.abs(shoulder.x - avgHipX), Math.abs(avgHipY - shoulder.y + 0.001)) *
-    (180 / Math.PI);
-  if (torsoLeanDeg > 15) formScore -= Math.min(15, (torsoLeanDeg - 15) * 1.5);
-
-  // Curl not reaching full range (when 'down', angle should be < 130°)
-  if (repState === 'down' && kneeAngle >= 130) formScore -= 10;
-
-  formScore = Math.max(0, Math.round(formScore));
-  return { repState, angle: Math.round(kneeAngle), formScore };
+  return Math.max(0, Math.min(100, score));
 }
 
 // ---------------------------------------------------------------------------
 // Active leg detection
 // ---------------------------------------------------------------------------
+
+const LEFT_HIP = 23;
+const RIGHT_HIP = 24;
+const LEFT_KNEE = 25;
+const RIGHT_KNEE = 26;
+const LEFT_ANKLE = 27;
+const RIGHT_ANKLE = 28;
 
 /** Examine a buffer of frames and return which leg moved more (higher angle variance). */
 export function detectActiveLeg(frameBuffer: NormalizedLandmark[][]): ActiveLeg {
@@ -377,7 +336,6 @@ export function detectActiveLeg(frameBuffer: NormalizedLandmark[][]): ActiveLeg 
   const leftVar = variance(leftAngles);
   const rightVar = variance(rightAngles);
 
-  // If variance is similar, prefer the leg closer to camera (lower z in MediaPipe)
   if (Math.abs(leftVar - rightVar) < 5) {
     const last = frameBuffer[frameBuffer.length - 1];
     const leftZ = last[LEFT_KNEE]?.z ?? 0;
@@ -398,60 +356,44 @@ export function createRepTracker(): RepTracker {
     lastState: null,
     formScores: [],
     currentAngle: 0,
-    isHolding: false,
-    holdStartTime: null,
-    holdDuration: 0,
     lastRepTime: null,
   };
 }
 
+/**
+ * State machine: up → down → up = 1 completed rep.
+ * 800ms cooldown between reps to prevent double-counting.
+ */
 export function updateRepCount(
   tracker: RepTracker,
   state: ExerciseState,
-  exerciseType: ExerciseType,
 ): RepTracker {
   const next: RepTracker = { ...tracker, currentAngle: state.angle };
 
-  // Push form score (rolling window of 15 frames)
+  // Rolling form score window (15 frames)
   next.formScores = [...tracker.formScores, state.formScore].slice(-15);
 
-  const isHoldExercise =
-    exerciseType === 'wall_sit' || exerciseType === 'single_leg_balance';
-
-  if (isHoldExercise) {
-    if (state.repState === 'hold') {
-      if (!tracker.isHolding) {
-        // Started holding
-        next.isHolding = true;
-        next.holdStartTime = performance.now();
-        next.holdDuration = 0;
-      } else {
-        // Continue holding
-        next.holdDuration = performance.now() - (tracker.holdStartTime ?? performance.now());
-        // Every 5 seconds of hold counts as 1 "rep"
-        const holdReps = Math.floor(next.holdDuration / 5000);
-        if (holdReps > tracker.count) {
-          next.count = holdReps;
-        }
-      }
-    } else {
-      // Stopped holding
-      next.isHolding = false;
-      next.holdStartTime = null;
+  // State machine
+  if (tracker.lastState === null) {
+    // First frame — initialize
+    next.lastState = state.repState;
+  } else if (tracker.lastState === 'up' && state.repState === 'down') {
+    // Entered the down position
+    next.lastState = 'down';
+  } else if (tracker.lastState === 'down' && state.repState === 'up') {
+    // Completed a rep — apply cooldown
+    const now = performance.now();
+    const cooldownOk = tracker.lastRepTime === null || now - tracker.lastRepTime > 800;
+    if (cooldownOk) {
+      next.count = tracker.count + 1;
+      next.lastRepTime = now;
     }
-  } else {
-    // Rep-based: count on down → up transition with 500ms cooldown
-    if (tracker.lastState === 'down' && state.repState === 'up') {
-      const now = performance.now();
-      const cooldownOk = tracker.lastRepTime === null || now - tracker.lastRepTime > 500;
-      if (cooldownOk) {
-        next.count = tracker.count + 1;
-        next.lastRepTime = now;
-      }
-    }
+    next.lastState = 'up';
+  } else if (state.repState !== 'hold') {
+    // Update lastState for non-hold transitions
+    next.lastState = state.repState;
   }
 
-  next.lastState = state.repState;
   return next;
 }
 

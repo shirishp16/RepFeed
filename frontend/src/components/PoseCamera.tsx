@@ -5,20 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import {
   initPoseLandmarker,
-  detectSquat,
-  detectWallSit,
-  detectCalfRaise,
-  detectHamstringCurl,
+  detectGeneric,
   detectActiveLeg,
   updateRepCount,
   createRepTracker,
   avgFormScore,
   POSE_CONNECTIONS,
-  EXERCISE_JOINTS,
   LEFT_LEG_SET,
   RIGHT_LEG_SET,
-  getExerciseJoints,
-  type ExerciseType,
+  getJointsFromDetection,
+  getVertexJointIdx,
+  type ExerciseDetection,
   type ActiveLeg,
   type RepTracker,
 } from '@/lib/poseDetection';
@@ -29,41 +26,11 @@ import {
 
 type CalibrationPhase = 'stand_back' | 'detecting' | 'confirmed' | 'tracking';
 
-// Exercises that need single-leg calibration
-const SINGLE_LEG_EXERCISES = new Set<ExerciseType>([
-  'hamstring_curl',
-  'calf_raise',
-  'single_leg_balance',
-]);
-
 interface PoseCameraProps {
-  exerciseType: ExerciseType;
+  detection: ExerciseDetection;
   onRepCounted: (newCount: number) => void;
   onFormUpdate: (score: number) => void;
   isActive: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Detector dispatch
-// ---------------------------------------------------------------------------
-
-function detect(
-  type: ExerciseType,
-  landmarks: NormalizedLandmark[],
-  activeLeg: ActiveLeg,
-) {
-  switch (type) {
-    case 'squat':
-      return detectSquat(landmarks);
-    case 'wall_sit':
-      return detectWallSit(landmarks);
-    case 'calf_raise':
-      return detectCalfRaise(landmarks, activeLeg);
-    case 'hamstring_curl':
-      return detectHamstringCurl(landmarks, activeLeg);
-    default:
-      return detectSquat(landmarks);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +78,7 @@ function drawSkeleton(
   canvas: HTMLCanvasElement,
   highlightedJoints: number[],
   angle: number,
-  exerciseType: ExerciseType,
+  angleJointIdx: number | null,
   activeLeg: ActiveLeg,
   isTracking: boolean,
 ) {
@@ -162,7 +129,6 @@ function drawSkeleton(
     }
 
     if (highlighted) {
-      // Pulse animation for highlighted joints
       const pulse = Math.sin(performance.now() / 150) * 0.15 + 1.0;
       ctx.save();
       ctx.beginPath();
@@ -178,19 +144,18 @@ function drawSkeleton(
     ctx.fill();
   }
 
-  // Draw angle near the active leg's knee
-  if (exerciseType !== 'generic' && angle > 0) {
-    const kneeIdx = activeLeg === 'right' ? 26 : 25;
-    const knee = mirrored[kneeIdx];
-    if ((knee.visibility ?? 0) > 0.5) {
-      const kx = knee.x * canvas.width + 20;
-      const ky = knee.y * canvas.height;
+  // Draw angle near the vertex joint
+  if (angleJointIdx != null && angle > 0) {
+    const joint = mirrored[angleJointIdx];
+    if ((joint.visibility ?? 0) > 0.5) {
+      const jx = joint.x * canvas.width + 20;
+      const jy = joint.y * canvas.height;
       ctx.font = 'bold 18px JetBrains Mono, monospace';
       ctx.fillStyle = '#FFFFFF';
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
       ctx.lineWidth = 3;
-      ctx.strokeText(`${angle}°`, kx, ky);
-      ctx.fillText(`${angle}°`, kx, ky);
+      ctx.strokeText(`${angle}°`, jx, jy);
+      ctx.fillText(`${angle}°`, jx, jy);
     }
   }
 }
@@ -226,7 +191,7 @@ function BodyFramingGuide() {
 // ---------------------------------------------------------------------------
 
 export default function PoseCamera({
-  exerciseType,
+  detection,
   onRepCounted,
   onFormUpdate,
   isActive,
@@ -254,7 +219,10 @@ export default function PoseCamera({
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const isSingleLeg = SINGLE_LEG_EXERCISES.has(exerciseType);
+  const isSingleLeg = detection.side === 'single_leg';
+
+  // Precompute joint data from detection
+  const highlightedJoints = getJointsFromDetection(detection);
 
   const cleanup = useCallback(() => {
     if (animFrameRef.current) {
@@ -279,7 +247,6 @@ export default function PoseCamera({
       activeLegRef.current === 'left' ? 'right' : 'left';
     activeLegRef.current = next;
     setActiveLeg(next);
-    // Reset tracker when switching legs mid-exercise
     trackerRef.current = createRepTracker();
     lastRepCount.current = 0;
   }, []);
@@ -295,10 +262,10 @@ export default function PoseCamera({
 
     let cancelled = false;
 
-    // Two-leg exercises skip calibration
+    // Single-leg exercises run calibration; two-leg skip to tracking
     const initialPhase: CalibrationPhase = isSingleLeg ? 'stand_back' : 'tracking';
     calibPhaseRef.current = initialPhase;
-    activeLegRef.current = isSingleLeg ? 'both' : 'both';
+    activeLegRef.current = 'both';
     phaseStartRef.current = performance.now();
     setCalibPhase(initialPhase);
 
@@ -363,14 +330,13 @@ export default function PoseCamera({
                   calibPhaseRef.current = 'tracking';
                   setCalibPhase('tracking');
                 } else {
-                  // Show confirmed leg pulse in Phase 3
                   drawSkeleton(
                     ctx,
                     smoothed,
                     canvas,
-                    getExerciseJoints(exerciseType, activeLegRef.current),
+                    highlightedJoints,
                     0,
-                    exerciseType,
+                    getVertexJointIdx(detection, activeLegRef.current),
                     activeLegRef.current,
                     true,
                   );
@@ -379,16 +345,15 @@ export default function PoseCamera({
                 }
               } else {
                 // ── Normal tracking ────────────────────────────────────────
-                const state = detect(
-                  exerciseType,
+                const state = detectGeneric(
                   smoothed,
+                  detection,
                   activeLegRef.current,
                 );
 
                 trackerRef.current = updateRepCount(
                   trackerRef.current,
                   state,
-                  exerciseType,
                 );
 
                 if (trackerRef.current.count > lastRepCount.current) {
@@ -413,9 +378,9 @@ export default function PoseCamera({
                   ctx,
                   smoothed,
                   canvas,
-                  getExerciseJoints(exerciseType, activeLegRef.current),
+                  highlightedJoints,
                   state.angle,
-                  exerciseType,
+                  getVertexJointIdx(detection, activeLegRef.current),
                   activeLegRef.current,
                   true,
                 );
@@ -429,7 +394,7 @@ export default function PoseCamera({
                   canvas,
                   [23, 24, 25, 26, 27, 28],
                   0,
-                  exerciseType,
+                  null,
                   'both',
                   false,
                 );
@@ -461,7 +426,7 @@ export default function PoseCamera({
       cancelled = true;
       cleanup();
     };
-  }, [isActive, exerciseType, isSingleLeg, onRepCounted, onFormUpdate, cleanup]);
+  }, [isActive, detection, isSingleLeg, highlightedJoints, onRepCounted, onFormUpdate, cleanup]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render

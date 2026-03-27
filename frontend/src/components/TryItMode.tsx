@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Camera, Play } from 'lucide-react';
 import type { ExerciseCard } from '@/data/mockData';
-import type { ExerciseType } from '@/lib/poseDetection';
 import PoseCamera from './PoseCamera';
 import RepCounter from './RepCounter';
 import FormScoreRing from './FormScoreRing';
@@ -50,7 +49,6 @@ export default function TryItMode({
   const [cameraPhase, setCameraPhase] = useState<CameraPhase>('prompt');
   const [countdown, setCountdown] = useState(3);
 
-  const exerciseType: ExerciseType = exercise?.exerciseType ?? 'generic';
   const targetReps = exercise?.reps ?? 5;
   const showComplete = reps >= Math.min(targetReps, 5);
 
@@ -233,9 +231,9 @@ export default function TryItMode({
             )}
 
             {/* Live camera */}
-            {cameraPhase === 'tracking' && (
+            {cameraPhase === 'tracking' && exercise.detection && (
               <PoseCamera
-                exerciseType={exerciseType}
+                detection={exercise.detection}
                 onRepCounted={handleRepCounted}
                 onFormUpdate={handleFormUpdate}
                 isActive={true}
