@@ -181,12 +181,12 @@ function calculateRepFormScore(angle: number, detection: Detection): number {
   const [okMin, okMax] = detection.form_ok_range;
 
   if (angle >= goodMin && angle <= goodMax) {
-    return 90 + Math.round(Math.random() * 10); // 90-100
+    return 92 + Math.round(Math.random() * 8); // 92-100
   }
   if (angle >= okMin && angle <= okMax) {
-    return 65 + Math.round(Math.random() * 15); // 65-80
+    return 75 + Math.round(Math.random() * 13); // 75-88
   }
-  return 40 + Math.round(Math.random() * 15); // 40-55
+  return 60 + Math.round(Math.random() * 12); // 60-72
 }
 
 export function processFrame(
