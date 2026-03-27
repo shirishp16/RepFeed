@@ -42,6 +42,12 @@ __pycache__/
 .venv/
 venv/
 
+# project docs (not for repo)
+CLAUDE.md
+AGENTS.md
+architecture.mmd
+presentation-script.md
+
 # vercel
 .vercel
 

@@ -1,409 +1,172 @@
-# RepFeed
+# RecoverFeed
 
-**TikTok-style physical therapy. AI-generated. Camera-tracked. Endlessly adaptive.**
+A TikTok-style physical therapy rehabilitation app with AI-generated exercises and real-time computer vision form tracking.
 
-![Next.js](https://img.shields.io/badge/Next.js-16.2.1-black?logo=nextdotjs)
-![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi)
-![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose-blue)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
+## Overview
 
----
+RecoverFeed reimagines physical therapy as an engaging, adaptive social-media-style experience. Users swipe through a full-screen vertical feed of exercises and educational content — all generated in real-time by GPT-4o-mini and personalized to their specific injury, recovery phase, and evolving preferences. When users tap "Try It" on an exercise, the app activates in-browser pose detection via MediaPipe to count reps and score form quality in real-time, with zero video data ever leaving the device.
 
-## What is RepFeed?
+Everything is stored per session — the app is built to demonstrate adaptive, AI-driven rehabilitation in a mobile-first format.
 
-RepFeed is a mobile-first rehabilitation app that delivers a personalized, infinite scroll feed of physical therapy exercises and educational content — built in the style of TikTok. Users swipe vertically through full-screen cards, earn XP, and watch the feed adapt in real time to their preferences and performance.
+## Key Features
 
-Every exercise and knowledge card is generated fresh by GPT-4o-mini, personalized to the user's injury condition (ACL, shoulder, back, etc.), recovery phase, and a continuously evolving preference vector tracked entirely client-side. There is no database, no authentication, and no pre-written content — everything is ephemeral and session-specific.
-
-The standout feature is **TryIt Mode**: tap any trackable exercise and your front-facing camera activates. MediaPipe Pose tracks 33 body landmarks in real time, counts your reps by measuring joint angles, and scores your form as you move — providing live feedback on whether you're hitting the target range of motion.
-
----
-
-## Features
-
-### Onboarding
-- Two-screen flow with smooth slide animations
-- **Condition picker**: ACL / Knee Surgery, Rotator Cuff / Shoulder, Lower Back Pain, Ankle Sprain, Wrist / Carpal Tunnel, Other
-- **Phase picker**: Early Recovery (wk 0–4), Building Strength (wk 4–12), Almost There (wk 12+)
-- Condition + phase are sent to the backend to personalize all generated content
-
-### AI-Generated Feed
-- GPT-4o-mini generates **8 exercise cards + 3 knowledge cards** per session call
-- Exercises are conditioned on injury type (knee patients only see leg exercises, shoulder patients only see upper body), recovery phase, and the user's current preference vector
-- Knowledge cards cover anatomy, recovery science, nutrition, and mindset — all condition-specific
-- Feed is interleaved: 2 exercises → 1 knowledge card → repeat, with a progress card every 7 cards
-
-### Adaptive Preference Learning
-- A 5-dimension **preference vector** (`upperBody`, `lowerBody`, `core`, `balance`, `intensity`) evolves throughout the session
-- **Implicit signals**: viewing a card for >3s → `like`; <1s → `skip`
-- **Explicit signals**: Like button, Too Easy, Too Hard
-- **Completion signal**: finishing an exercise via TryIt awards the strongest update (+0.2 to the relevant dimension)
-- Learning rate: `0.1` per interaction, clamped to [0, 1]
-
-### Infinite Feed Recalibration
-- Every 6 cards viewed, the backend is silently queried with the updated preference vector
-- New exercises are appended to the feed tail — the feed never ends
-- Already-completed exercises are passed to the backend to avoid repetition
-- A subtle "Updating your feed..." toast appears during recalibration
-
-### TryIt Mode — Real-Time Pose Tracking
-- Tap **TRY IT** on any trackable exercise to open the full-screen camera overlay
-- MediaPipe Pose (`@mediapipe/tasks-vision`) tracks 33 body landmarks at up to 30fps
-- Reps are counted by measuring the angle between a 3-joint triplet (e.g. hip→knee→ankle for squats) and tracking transitions between rest and active positions
-- Skeleton overlay drawn on canvas (CSS-mirrored to match the front camera)
-- Falls back to a demo mode (auto-counting skeleton animation) if camera is denied
-- Single-side exercises show a "Switch Side" button to track the other leg/arm
-
-### Form Scoring
-- Each rep is scored based on how close the peak angle reached the LLM-specified ideal range
-- **Good form** (peak in ideal range): 90–100 pts
-- **Acceptable form** (wider range): 65–80 pts
-- **Needs work** (outside ranges): 40–55 pts
-- Score displayed as a **running average** across all reps in the set
-- **Live preview** updates during each rep as you move deeper — provides real-time "go deeper!" feedback
-
-### Gamification
-- **+2 XP** for every new card viewed
-- **+XP** on exercise completion: `max(10, reps × (max(formScore, 50) / 100) × 10)`
-- **Streak counter** increments with each completed exercise
-- **Level** derived from total XP: `floor(xp / 100) + 1`
-- Progress cards show session stats: exercises completed, total reps, average form score, XP earned
-
-### Rehab Intelligence Panel
-- Floating brain button (bottom-right) expands a radar chart visualization
-- Five axes map to the preference vector: Quad Strength, Flexibility, Balance, Endurance, Pain Tolerance
-- Dynamically generated insights (e.g. "Lower body focus detected", "Ready for higher intensity")
-- Shows "Feed Adapting..." spinner after 5+ cards viewed
-
----
+- **AI-Generated Content** — Every exercise and knowledge card is generated by GPT-4o-mini, tailored to the user's condition, recovery phase, and preference vector
+- **TikTok-Style Feed** — Full-screen scroll-snap cards with interleaved exercises, educational content, and progress milestones
+- **Adaptive Behavioral Engine** — A 5-dimension preference vector (upperBody, lowerBody, core, balance, intensity) learns from both implicit signals (dwell time) and explicit feedback (like / too easy / too hard)
+- **Feed Recalibration** — Every 6 cards, the feed fetches new exercises using the updated preference vector, creating an infinite adaptive feed
+- **Real-Time Pose Detection** — MediaPipe PoseLandmarker runs entirely in the browser, tracking joint angles to count reps and score form (0-100)
+- **XP & Gamification** — Earn XP for viewing cards and completing exercises, with streak tracking and level progression
+- **Live Rehab Profile** — A radar chart visualizes the 5-dimension preference vector adapting in real-time as the user interacts with the feed
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | Next.js 16.2.1, React 19, TypeScript (strict) |
-| **Styling** | Tailwind CSS v4 (`@theme inline`), Framer Motion |
-| **Pose Detection** | MediaPipe Pose (`@mediapipe/tasks-vision`) — loaded from CDN |
-| **Icons** | Lucide React |
-| **Backend** | Python, FastAPI, Uvicorn |
-| **AI** | OpenAI GPT-4o-mini (configurable) |
-| **State** | React hooks only (`useFeed.ts`) — no Redux, no Zustand |
-| **Fonts** | Outfit (UI), JetBrains Mono (labels) |
-
----
+| Frontend | Next.js 16, React 19, TypeScript (strict), Tailwind CSS v4, Framer Motion |
+| Backend | Python FastAPI, Pydantic v2, Uvicorn |
+| AI | OpenAI API (GPT-4o-mini) for real-time content generation |
+| Computer Vision | MediaPipe PoseLandmarker (WASM + GPU delegate, fully in-browser) |
+| Fonts | Outfit (UI) + JetBrains Mono (data labels) via Google Fonts |
 
 ## Architecture
 
-```
-Onboarding (condition + phase)
-        │
-        ▼
-  useFeed.ts ──── POST /api/feed ────▶ FastAPI ──▶ GPT-4o-mini
-      │  │         POST /api/knowledge ──▶ ↗              │
-      │  │                                    8 exercises + 3 knowledge cards
-      │  │
-      │  └── Preference Vector (behavioralEngine.ts)
-      │           ▲ updated by:
-      │           │   implicit: time-on-card (skip / like)
-      │           │   explicit: Like, Too Easy, Too Hard, Completed
-      │
-      └── TryIt Mode
-               │
-               ▼
-         PoseCamera.tsx
-               │
-               ▼
-         MediaPipe Pose (33 landmarks, GPU delegate, VIDEO mode)
-               │
-               ▼
-         processFrame() — measures 3-joint angle
-               │
-               ├── Rep state machine: resting ↔ active → count++
-               └── Form score: peak angle vs. LLM-specified ranges
-```
+> See [`architecture.mmd`](architecture.mmd) for the full system diagram.
 
-**Key design decisions:**
-- All state lives in `useFeed.ts` — a single React hook. No external state library.
-- No database, no auth. Every session is ephemeral.
-- The backend is stateless — it receives the full context (condition, phase, preferences, history) on every request.
-- MediaPipe WASM and model files load from CDN at runtime (requires internet access).
-- `NEXT_PUBLIC_API_URL` is baked at build time — changing `.env.local` requires a dev server restart.
-
----
+1. **Onboard** — User selects their injury condition (ACL, Shoulder, Back, Ankle, Wrist) and recovery phase (Early Recovery, Building Strength, Almost There)
+2. **Generate** — The `useFeed` hook sends condition, phase, and preference vector to the FastAPI backend, which prompts GPT-4o-mini to produce 8 exercises and 3 knowledge cards as structured JSON
+3. **Display** — Cards are interleaved into a scroll-snap feed: `[Exercise, Exercise, Knowledge, Exercise, Exercise, Knowledge, Progress, ...]`
+4. **Learn** — The behavioral engine processes implicit signals (card dwell time) and explicit signals (like/easy/hard buttons) to update the 5D preference vector
+5. **Recalibrate** — Every 6 cards viewed, new exercises are fetched with the updated preference vector and appended to the feed tail
+6. **Try It** — Users can activate the camera for supported exercises. MediaPipe tracks joint angles, counts reps via a state machine, and scores form quality — all client-side
 
 ## Project Structure
 
 ```
-RepFeed/
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx           Main app (onboarding → feed)
-│   │   │   ├── layout.tsx
-│   │   │   └── globals.css        Tailwind v4 @theme + animations
-│   │   ├── components/
-│   │   │   ├── OnboardingFlow.tsx  Condition + phase selection
-│   │   │   ├── FeedContainer.tsx   Scroll-snap viewport + IntersectionObserver
-│   │   │   ├── ExerciseCard.tsx    Full-height exercise card
-│   │   │   ├── KnowledgeCard.tsx   Educational content card
-│   │   │   ├── ProgressCard.tsx    Session stats + motivational quote
-│   │   │   ├── CardActions.tsx     Like / Too Easy / Too Hard buttons
-│   │   │   ├── TopBar.tsx          XP, streak, phase pill header
-│   │   │   ├── TryItMode.tsx       Full-screen camera overlay
-│   │   │   ├── PoseCamera.tsx      MediaPipe integration + skeleton drawing
-│   │   │   ├── FormScoreRing.tsx   SVG ring (green/yellow/red)
-│   │   │   ├── RepCounter.tsx      Animated rep count display
-│   │   │   ├── RehabProfile.tsx    Radar chart + preference insights
-│   │   │   ├── FeedRecalibrating.tsx  Neural-net animation overlay
-│   │   │   └── SplashCursor.tsx    Canvas fluid cursor (onboarding)
-│   │   ├── hooks/
-│   │   │   └── useFeed.ts          All session state + API calls
-│   │   ├── lib/
-│   │   │   ├── behavioralEngine.ts Preference vector update logic
-│   │   │   └── poseDetection.ts    MediaPipe + angle measurement + rep state machine
-│   │   └── data/
-│   │       └── mockData.ts         TypeScript interfaces + motivational quotes
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── next.config.ts
-│   └── .env.local                  NEXT_PUBLIC_API_URL
+/
+├── frontend/                 Next.js app
+│   └── src/
+│       ├── app/              App Router pages + global CSS
+│       ├── components/       14 UI components (cards, overlays, profile)
+│       ├── hooks/            useFeed — single source of truth for all state
+│       ├── lib/              Behavioral engine + MediaPipe pose detection
+│       └── data/             TypeScript interfaces + motivational quotes
 │
-├── backend/
-│   ├── main.py                     FastAPI app (/api/feed, /api/knowledge, /health)
-│   ├── models.py                   Pydantic request/response models
-│   ├── requirements.txt
-│   └── .env                        OPENAI_API_KEY, OPENAI_MODEL
+├── backend/                  Python FastAPI server
+│   ├── main.py               /api/feed and /api/knowledge endpoints
+│   ├── models.py             Pydantic request models
+│   └── requirements.txt
 │
-└── Makefile                        Dev commands
+├── architecture.mmd          Mermaid system diagram
+├── Makefile                  Dev commands
+└── CLAUDE.md                 Detailed project documentation
 ```
-
----
 
 ## Getting Started
 
-### Prerequisites
-
-- Node.js 18+
-- Python 3.10+
-- An OpenAI API key ([platform.openai.com](https://platform.openai.com))
-
-### Install
+**Prerequisites:** Node.js 18+, Python 3.10+, an OpenAI API key
 
 ```bash
-git clone https://github.com/shirishp16/RepFeed.git
-cd RepFeed
+# Clone and install everything
+git clone <repo-url> && cd RepFeed
 make install
+
+# Configure backend
+echo "OPENAI_API_KEY=sk-your-key-here" > backend/.env
+
+# Run both services
+make backend   # FastAPI on port 8000
+make frontend  # Next.js on port 3000
 ```
 
-`make install` runs `npm install` in the frontend and sets up a Python venv with all backend dependencies.
+Open [http://localhost:3000](http://localhost:3000) on a mobile viewport.
 
-### Environment Setup
+## Technical Deep Dive
 
-**Backend** — create `backend/.env`:
-```env
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini    # switch to gpt-4o for higher quality at higher cost
+### State Management — `useFeed` Hook
+
+All application state lives in a single custom React hook (`useFeed.ts`). Rather than using a state management library, the hook centralizes feed cards, session stats, preference vector, and UI state into one place and exposes a flat API to the page component.
+
+Key architectural decisions:
+- **Ref-mirrored state** — Mutable refs (`preferenceVectorRef`, `exerciseHistoryRef`, `conditionRef`) shadow their corresponding state values so that `useCallback` closures always read the latest data without triggering re-renders or stale closure bugs
+- **Deduplication guards** — `lastRecalibIndexRef` and `isFetchingRef` prevent concurrent or duplicate fetches during recalibration. Without these, rapid scrolling would fire multiple parallel API calls for the same card index
+- **Derived state** — `level` and `avgFormScore` are computed via `useMemo` rather than stored, keeping the state normalized. Level is `floor(xp / 100) + 1`, and form score is the running mean of all session scores
+
+The hook manages parallel initial data fetching (`Promise.all` for exercises + knowledge), feed construction via `buildFeedFromArrays`, and the recalibration lifecycle — all without any external state library.
+
+### Behavioral Preference Engine
+
+The engine (`behavioralEngine.ts`) maintains a 5-dimension preference vector where each dimension is a float clamped to `[0, 1]` with a base learning rate of `0.1`:
+
+| Signal | Effect |
+|--------|--------|
+| `like` / `tried_it` | `+0.1` to the exercise's mapped area dimension |
+| `skip` (< 1s dwell) | `-0.05` to the exercise's mapped area dimension |
+| `too_easy` | `+0.1` to `intensity` |
+| `too_hard` | `-0.1` to `intensity` |
+| `completed` | `+0.2` to area dimension; `+0.05` to `intensity` if form score > 80 |
+
+**Area mapping** converts exercise `targetArea` strings to preference dimensions via a lookup table — for example, "Quadriceps", "Hamstrings", "Calves", and "Hip Abductors" all map to `lowerBody`, while "Proprioception" maps to `balance` and "Plyometric Power" maps to `intensity`. Unrecognized areas default to `lowerBody`.
+
+**Exercise scoring** (`scoreExercise`) produces a 0-1 relevance score using a weighted combination: 60% area preference match and 40% intensity match, where intensity match is `1 - |normalizedDifficulty - preferences.intensity|`.
+
+**Implicit signal detection** happens in `onCardVisible` — the hook timestamps when each card becomes visible. When the user scrolls away, if they spent less than 1 second it fires a `skip` signal; more than 3 seconds fires a `like` signal. This runs silently alongside the explicit button feedback.
+
+### LLM-Powered Content Generation
+
+The FastAPI backend (`main.py`) sends structured prompts to GPT-4o-mini that include:
+
+- The patient's condition, recovery phase, and current preference vector weights
+- A list of already-completed exercises to prevent repeats across recalibration cycles
+- Condition-specific constraints (e.g., knee rehab patients only receive lower body exercises — never arm/shoulder work)
+- Detailed angle measurement specifications with worked examples so the LLM generates valid `detection` objects for each exercise
+
+Each exercise the LLM returns includes a `detection` object that defines the joint triplet to measure (e.g., `["hip", "knee", "ankle"]`), the resting angle (~175° for standing), the active angle at peak movement (~80° for a squat), and two tolerance ranges for form scoring (`form_good_range` and `form_ok_range`). The prompt provides reference detection objects for common exercises (squats, hamstring curls, calf raises, wall push-ups) so the LLM can generate accurate thresholds for novel exercises.
+
+A `parse_json_response` helper strips markdown code fences before parsing, since LLMs occasionally wrap JSON output in triple backticks despite instructions not to.
+
+### Pose Detection Pipeline
+
+The pose detection system (`poseDetection.ts` + `PoseCamera.tsx`) runs entirely in the browser using MediaPipe's PoseLandmarker with GPU acceleration:
+
+**Initialization** — The PoseLandmarker is loaded as a singleton (lazy-loaded on first "Try It" tap). It downloads the WASM runtime from jsDelivr CDN and the float16 model from Google Cloud Storage, then runs in `VIDEO` mode with 60% minimum detection and tracking confidence.
+
+**Angle calculation** — For each frame, the system extracts three landmarks forming a joint triplet (defined in the exercise's `detection` object), maps them to MediaPipe's 33-landmark index system, and computes the interior angle at the vertex joint using `atan2`:
+
+```
+angle = |atan2(c.y - b.y, c.x - b.x) - atan2(a.y - b.y, a.x - b.x)|
 ```
 
-**Frontend** — create `frontend/.env.local`:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+For bilateral exercises (`side: "both"`), left and right angles are averaged. For single-side exercises, only the active side's landmarks are used, and the user can switch sides mid-session.
+
+**Rep counting state machine** — Each frame updates a `RepState` object through three phases:
+
+```
+RESTING ──(angle crosses 60% of movement range)──> ACTIVE
+ACTIVE  ──(angle returns within 30% of rest)──────> RESTING (rep counted)
+BETWEEN ──(transitional, prevents false triggers)──> RESTING or ACTIVE
 ```
 
-### Run
+A 600ms cooldown between reps prevents double-counting from noisy angle data.
 
-```bash
-# Terminal 1 — backend
-make backend     # FastAPI on http://localhost:8000
+**Form scoring** — At the peak of each rep, the system evaluates the deepest angle reached against the detection thresholds:
+- Angle within `form_good_range`: score 92-100
+- Angle within `form_ok_range`: score 75-88
+- Outside both ranges: score 60-72
 
-# Terminal 2 — frontend
-make frontend    # Next.js on http://localhost:3000
-```
+Scores include a small random offset within each tier to feel more natural. During active movement, the displayed form score uses exponential weighted averaging (70% historical, 30% current frame) for smooth visual feedback.
 
-Open [http://localhost:3000](http://localhost:3000) on a mobile device or with mobile emulation in DevTools for the best experience.
+**Landmark smoothing** — Raw MediaPipe landmarks are averaged over a sliding window of 5 frames to reduce jitter. Each frame's x/y/z/visibility values are the mean of the last 5 raw detections.
 
----
+**Performance** — Pose detection runs every other frame to reduce GPU load. Form score updates are throttled to every 10th frame. The skeleton canvas overlay uses mirrored coordinates (since the video is CSS-flipped for a selfie-camera feel), with highlighted joints pulsing via a `sin(performance.now())` animation and the current angle displayed in monospace near the vertex joint.
 
-## How Pose Detection Works
+### Feed Construction & Recalibration
 
-When TryIt Mode is activated, the backend has already provided a `detection` object alongside each exercise:
+**Interleaving** — `buildFeedFromArrays` takes exercise and knowledge card arrays and produces a deterministic pattern: two exercises, one knowledge card, repeating. A progress card (showing session stats and a motivational quote) is injected every 7 cards. A `progressOffset` counter ensures unique IDs across recalibration cycles.
 
-```json
-{
-  "primary_joints": ["hip", "knee", "ankle"],
-  "side": "both",
-  "rest_angle": 175,
-  "active_angle": 80,
-  "form_good_range": [65, 95],
-  "form_ok_range": [95, 130]
-}
-```
+**Recalibration** — Every 6 cards viewed (`index % 6 === 0`), the hook sends the current preference vector and full exercise history to the backend. The backend generates 8 fresh exercises steered by the updated preference weights and excluding completed exercises. New cards are appended to the feed tail with cycle-scoped IDs (`${id}-r${cycle}`), making the feed effectively infinite. A toast notification ("Updating your feed...") appears during the fetch.
 
-The frontend measures the angle formed by those three joints (with the **middle joint as the vertex**) using MediaPipe landmark coordinates:
+**XP system** — Viewing a new card awards +2 XP. Completing a Try It session awards dynamic XP: `max(10, round(reps * (max(formScore, 50) / 100) * 10))`. Level is derived as `floor(xp / 100) + 1`.
 
-| Angle at | Joint triplet | Rest (straight) | Active (bent) |
-|----------|--------------|-----------------|---------------|
-| Knee | `hip → knee → ankle` | ~175° | ~80° (squat) |
-| Elbow | `shoulder → elbow → wrist` | ~165° | ~40° (curl) |
-| Hip | `shoulder → hip → knee` | ~175° | ~100° (leg raise) |
+## Privacy
 
-**Rep counting** uses a progress-based state machine:
-- `progress = |angle - rest_angle| / |rest_angle - active_angle|`
-- `progress < 0.3` → **resting** state
-- `progress > 0.6` → **active** state
-- `resting → active → resting` = **1 completed rep** (600ms cooldown between reps)
-
-**Form scoring** checks where the peak angle reached during the rep falls relative to the LLM-specified ranges, then maintains a running average across all reps in the set.
-
----
-
-## How the Behavioral Engine Works
-
-The preference vector is a 5-float object representing the user's current profile:
-
-```typescript
-{
-  upperBody: 0.5,   // affinity for upper body exercises
-  lowerBody: 0.7,   // affinity for lower body exercises
-  core: 0.5,        // affinity for core exercises
-  balance: 0.4,     // affinity for balance/stability exercises
-  intensity: 0.5,   // preferred intensity level
-}
-```
-
-It updates on every interaction with a **learning rate of 0.1**, clamped to [0, 1]:
-
-| Signal | Trigger | Effect |
-|--------|---------|--------|
-| `like` | Like button / viewed >3s | +0.1 to exercise's target dimension |
-| `skip` | Viewed <1s | −0.05 to exercise's target dimension |
-| `too_easy` | Too Easy button | +0.1 to `intensity` |
-| `too_hard` | Too Hard button | −0.1 to `intensity` |
-| `completed` | TryIt finished | +0.2 to target dimension; +0.05 intensity if formScore >80 |
-
-The updated vector is sent to `/api/feed` on every recalibration, causing GPT-4o-mini to shift the exercise mix accordingly.
-
----
-
-## API Reference
-
-### `POST /api/feed`
-
-Generates 8 personalized exercise cards.
-
-**Request:**
-```json
-{
-  "condition": "ACL / Knee Surgery",
-  "phase": "Building Strength",
-  "preferences": {
-    "upperBody": 0.3,
-    "lowerBody": 0.8,
-    "core": 0.5,
-    "balance": 0.4,
-    "intensity": 0.6
-  },
-  "completedExercises": ["Standing Squats", "Wall Sits"]
-}
-```
-
-**Response:**
-```json
-{
-  "exercises": [
-    {
-      "id": "ex_001",
-      "name": "Bulgarian Split Squat",
-      "targetArea": "Quadriceps",
-      "difficulty": 6,
-      "description": "Stand 2 feet in front of a chair...",
-      "whyItHelps": "Strengthens the quad without overloading the graft...",
-      "reps": "3 sets of 10 each leg",
-      "xpReward": 35,
-      "muscleGroups": ["Quadriceps", "Glutes", "Hamstrings"],
-      "safetyNote": "Keep your front knee behind your toes.",
-      "canTryIt": true,
-      "detection": {
-        "primary_joints": ["hip", "knee", "ankle"],
-        "side": "left",
-        "rest_angle": 175,
-        "active_angle": 85,
-        "form_good_range": [70, 100],
-        "form_ok_range": [100, 130]
-      }
-    }
-  ]
-}
-```
-
-### `POST /api/knowledge`
-
-Generates 3 educational knowledge cards.
-
-**Request:**
-```json
-{
-  "condition": "ACL / Knee Surgery",
-  "phase": "Building Strength"
-}
-```
-
-**Response:**
-```json
-{
-  "cards": [
-    {
-      "id": "kb_001",
-      "title": "Why your quad shuts off after ACL surgery",
-      "content": "Arthrogenic muscle inhibition (AMI) is a reflex response...",
-      "category": "anatomy"
-    }
-  ]
-}
-```
-
-### `GET /health`
-
-Returns `{"status": "ok"}`. Use to verify the backend is running.
-
----
-
-## Design System
-
-Defined in `frontend/src/app/globals.css` via Tailwind v4 `@theme inline`. No `tailwind.config.js` exists — use CSS variable tokens directly.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--accent` | `#F97316` | XP, highlights, primary actions |
-| `--active` | `#2DD4BF` | TryIt mode, active states, teal glow |
-| `--bg` | `#060606` | Page background |
-| `--bg-card` | `#0e0e0e` | Card backgrounds |
-| `--bg-elevated` | `#171717` | Panels, drawers |
-| `--text-primary` | `#F1F1F1` | Body text |
-| `--text-secondary` | `#7A7A7A` | Subtitles, labels |
-| `--success` | `#22C55E` | Form score ring (good) |
-| `--warning` | `#EAB308` | Form score ring (ok) |
-| `--danger` | `#EF4444` | Form score ring (poor) |
-
-**Fonts:** `Outfit` (all UI text) and `JetBrains Mono` (data labels, counters, mono readouts). Loaded via Google Fonts `@import` in `globals.css`.
-
----
-
-## Commands
-
-```bash
-make install     # Install all frontend + backend dependencies
-make frontend    # Start Next.js dev server on :3000
-make backend     # Start FastAPI with hot reload on :8000
-
-# Frontend only
-cd frontend && npm run build    # Production build + TypeScript check
-cd frontend && npm run lint     # ESLint
-cd frontend && npm run dev      # Dev server
-
-# Backend only
-cd backend && uvicorn main:app --reload --port 8000
-```
-
-> No test framework is configured. Use `npm run build` to verify TypeScript — zero errors means passing.
+All pose detection runs in-browser via WASM. Video never leaves the device, and no user data is stored anywhere, making the entire session transient.
