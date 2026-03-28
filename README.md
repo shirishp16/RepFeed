@@ -2,6 +2,14 @@
 
 A TikTok-style physical therapy rehabilitation app with AI-generated exercises and real-time computer vision form tracking.
 
+## Awards
+
+2nd Place: Buckeye Black Box AI Hackathon 2026
+
+## Demo
+
+Link: https://youtu.be/PSwjOkJtWWc?si=X9rAinbdDK7Co_Lk
+
 ## Overview
 
 RecoverFeed reimagines physical therapy as an engaging, adaptive social-media-style experience. Users swipe through a full-screen vertical feed of exercises and educational content — all generated in real-time by GPT-4o-mini and personalized to their specific injury, recovery phase, and evolving preferences. When users tap "Try It" on an exercise, the app activates in-browser pose detection via MediaPipe to count reps and score form quality in real-time, with zero video data ever leaving the device.
